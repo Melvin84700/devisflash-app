@@ -6681,7 +6681,24 @@ function extractCompanyInfo(r, requestedSiret, isSiret) {
 
 // === IA EXPERT (Gemini API) ============================================
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3-flash-preview"; // défaut — la vraie liste est GEMINI_MODELS_FALLBACK
+
+// === PROXY IA (fonction serveur Supabase) ==============================
+// Toute l'IA passe par ce proxy : c'est LUI qui détient la clé Gemini, côté
+// serveur. Le navigateur ne la voit jamais. Seuls les utilisateurs connectés
+// peuvent l'appeler (jeton d'authentification obligatoire) → quota protégé.
+const IA_PROXY_URL = window.SUPABASE_URL + '/functions/v1/ia';
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
+
+// Jeton de l'utilisateur connecté (le proxy refuse les anonymes).
+async function getAccessToken() {
+  try {
+    const { data } = await window.sb.auth.getSession();
+    return data?.session?.access_token || SUPABASE_ANON_KEY;
+  } catch (e) {
+    return SUPABASE_ANON_KEY;
+  }
+}
 
 // === CLÉS IA — JAMAIS EN DUR DANS CE FICHIER ===========================
 // Ce fichier est servi tel quel au navigateur : tout ce qui est écrit ici est
@@ -7366,7 +7383,14 @@ function _fixVariant(variant, variantKey, report) {
 }
 
 // Liste de modèles à essayer dans l'ordre — priorité vitesse, fallback vers plus puissant si saturé
-const GEMINI_MODELS_FALLBACK = ["gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"];
+// Ordre issu d'un vrai bench (2026-07-12, 4 passages sur une dictée d'électricien,
+// mesuré sur les oublis métier repérés — terre, amiante, circuits cuisine, VDI, Enedis) :
+//   gemini-3-flash-preview  6/6 · ~10s · 0 échec  ← le meilleur ET le plus rapide
+//   gemini-3.5-flash        5-6/6 · ~20s · JSON invalide 1 fois sur 4
+//   gemini-3.1-flash-lite   4/6 · ~2s · rate le nb de prises cuisine et la puissance Enedis
+// Les anciens (gemini-1.5/2.0/2.5-flash) ont été RETIRÉS par Google → 404.
+// Les modèles "pro" sont inaccessibles en gratuit → 429. Tester avant d'en ajouter un.
+const GEMINI_MODELS_FALLBACK = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
 
 // Compresse une image File en base64 JPEG (max 1200px, qualité 0.8)
 function compressImageToBase64(file, maxSize = 1200, quality = 0.8) {
@@ -7576,45 +7600,93 @@ async function tryBedrockModel(modelId, promptParts, key, photos) {
   catch { throw new Error("Le JSON renvoyé par Claude est invalide."); }
 }
 
-async function tryGeminiModel(modelName, prompt, key, photos) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
-  const parts = [{ text: prompt }];
-  if (Array.isArray(photos)) {
-    for (const p of photos) {
-      if (p && p.base64) {
-        parts.push({ inlineData: { mimeType: p.mimeType || 'image/jpeg', data: p.base64 } });
-      }
-    }
-  }
+// ─── APPEL IA : deux chemins, zéro clé exposée ───
+// • Site public : via le PROXY (fonction serveur Supabase) qui détient la clé.
+// • Dev local : appel Google direct avec la clé de keys.local.js (gitignoré) —
+//   permet de développer sans dépendre du proxy déployé.
+// Renvoie le texte brut de l'IA. `search: true` active la recherche Google
+// (comparateur de prix) — dans ce cas le JSON est extrait du texte par l'appelant.
+async function callIaRaw(modelName, prompt, photos, opts = {}) {
+  const localKey = IS_LOCAL_DEV ? getGeminiKey() : "";
+  const wantSearch = opts.search === true;
+
   let res;
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.1 } // 0.1 → prix stables
-      })
-    });
+    if (localKey) {
+      const parts = [{ text: prompt }];
+      if (Array.isArray(photos)) {
+        for (const p of photos) {
+          if (p && p.base64) parts.push({ inlineData: { mimeType: p.mimeType || 'image/jpeg', data: p.base64 } });
+        }
+      }
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${localKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          ...(wantSearch ? { tools: [{ google_search: {} }] } : {}),
+          generationConfig: {
+            temperature: opts.temperature ?? 0.1,
+            ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+            ...(wantSearch ? {} : { responseMimeType: "application/json" }),
+          },
+        }),
+      });
+    } else {
+      const parts = Array.isArray(photos)
+        ? photos.filter(p => p && p.base64).map(p => ({ base64: p.base64, mimeType: p.mimeType || 'image/jpeg' }))
+        : [];
+      res = await fetch(IA_PROXY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + (await getAccessToken()),
+        },
+        body: JSON.stringify({
+          prompt, model: modelName, photos: parts,
+          temperature: opts.temperature ?? 0.1,
+          search: wantSearch,
+          max_output_tokens: opts.maxOutputTokens,
+        }),
+      });
+    }
   } catch (netErr) {
     const e = new Error("RÉSEAU: " + (netErr && netErr.message ? netErr.message : 'fetch failed') + " — vérifie : extensions navigateur (uBlock, AdGuard), antivirus, ou navigation privée.");
     e.netError = true;
-    console.error('[DevisFlash] Erreur réseau Gemini:', netErr);
+    console.error('[DevisFlash] Erreur réseau IA:', netErr);
     throw e;
   }
+
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { const err = await res.json(); if (err.error?.message) msg = err.error.message; } catch {}
+    const msg = data.error?.message || data.error || `HTTP ${res.status}`;
     const e = new Error(msg);
     e.status = res.status;
-    e.overloaded = (res.status === 503 || res.status === 429 || /overload|high demand|unavailable|rate/i.test(msg));
+    e.overloaded = (res.status === 503 || res.status === 429 || res.status === 502 || /overload|unavailable|quota|rate/i.test(String(msg)));
     throw e;
   }
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = localKey
+    ? (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '')
+    : (data.text || '');
   if (!text) throw new Error("Réponse vide de l'IA.");
+  return text;
+}
+
+// Génération structurée (devis, conseil) : texte IA → objet JSON.
+async function tryGeminiModel(modelName, prompt, key, photos) {
+  const text = await callIaRaw(modelName, prompt, photos);
   try { return JSON.parse(text); }
-  catch { throw new Error("L'IA n'a pas renvoyé un JSON valide. Réessaye."); }
+  catch {
+    // Un JSON malformé arrive ~1 fois sur 4 sur certains modèles. Ce n'est pas
+    // une erreur fatale : on marque l'échec comme "réessayable" pour que la
+    // cascade retente, puis bascule sur le modèle suivant. Sans ce flag,
+    // l'utilisateur voyait une erreur alors qu'un simple retry suffisait.
+    const e = new Error("L'IA n'a pas renvoyé un JSON valide.");
+    e.status = 502;
+    e.overloaded = true;
+    throw e;
+  }
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -7677,9 +7749,8 @@ async function callGeminiExpert(ctx, dictee, photos) {
     // Si on arrive ici sans return, Bedrock a échoué — on continue vers Gemini
   }
 
-  // ─── FALLBACK : Gemini ───
-  const key = getGeminiKey();
-  if (!key) throw new Error("Aucune clé API (Bedrock+Gemini) configurée.");
+  // ─── Gemini via le proxy serveur (plus de clé côté navigateur) ───
+  const key = null; // la clé vit sur le serveur ; conservé pour la signature d'appel
   let lastErr = null;
   for (let i = 0; i < GEMINI_MODELS_FALLBACK.length; i++) {
     const model = GEMINI_MODELS_FALLBACK[i];
@@ -7714,8 +7785,7 @@ async function callGeminiExpert(ctx, dictee, photos) {
 const IA_BATCH_SIZE = 3;
 
 async function findProductsWithGemini(store, productLines) {
-  const key = getGeminiKey();
-  if (!key) throw new Error("Clé API Gemini manquante.");
+  const key = null; // clé côté serveur (proxy) — plus rien dans le navigateur
 
   if (productLines.length === 0) return [];
 
@@ -7851,36 +7921,15 @@ FORMAT DE SORTIE — JSON STRICT, AUCUN TEXTE AVANT OU APRÈS, dans un bloc \`\`
 
 JSON parsable obligatoire.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
-
-  let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 16384,
-          candidateCount: 1
-        }
-      })
-    });
-  } catch (netErr) {
-    throw new Error("RÉSEAU : " + (netErr?.message || 'fetch failed'));
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-  const finishReason = data.candidates?.[0]?.finishReason || '';
-  if (!text) throw new Error("Réponse vide de l'IA.");
+  // Recherche de prix en ligne : passe par le chemin IA unifié (proxy en prod,
+  // clé locale en dev) avec la recherche Google activée. Le modèle vient de la
+  // cascade à jour — l'ancien appel figeait un modèle aujourd'hui retiré (404).
+  const text = await callIaRaw(GEMINI_MODELS_FALLBACK[0], prompt, null, {
+    search: true,
+    temperature: 0,
+    maxOutputTokens: 16384,
+  });
+  const finishReason = ''; // plus exposé par le chemin unifié — servait uniquement aux logs
 
   // Extrait le JSON du bloc markdown ou du texte brut
   const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
@@ -7983,8 +8032,7 @@ Réponds STRICTEMENT au format JSON, sans texte avant ni après, sans bloc markd
 }
 
 async function callGeminiConseil(question, metier, photos) {
-  const key = getGeminiKey();
-  if (!key) throw new Error("Clé API Gemini manquante.");
+  const key = null; // clé côté serveur (proxy)
   const prompt = buildConseilPrompt(question, metier, Array.isArray(photos) && photos.length > 0);
 
   for (let i = 0; i < GEMINI_MODELS_FALLBACK.length; i++) {
@@ -9573,10 +9621,7 @@ function QuoteGenerator({ open, onClose }) {
   const generateExpert = async () => {
     setExpertError('');
     setErrors([]);
-    if (!getGeminiKey()) {
-      setExpertError("Assistant IA indisponible sur cette version en ligne. La saisie manuelle du devis reste disponible.");
-      return;
-    }
+    // Plus de contrôle de clé ici : l'IA passe par le proxy serveur.
     if (!artisan.entreprise || !client.nom) {
       setExpertError("Renseigne au minimum : entreprise et client.");
       return;
@@ -9684,10 +9729,7 @@ function QuoteGenerator({ open, onClose }) {
   const generateConseil = async () => {
     setConseilError('');
     setConseilResult(null);
-    if (!getGeminiKey()) {
-      setConseilError("Assistant IA indisponible sur cette version en ligne.");
-      return;
-    }
+    // Plus de contrôle de clé ici : l'IA passe par le proxy serveur.
     if (!conseilQuestion.trim() && conseilPhotos.length === 0) {
       setConseilError("Pose une question OU ajoute une photo (idéalement les deux).");
       return;
