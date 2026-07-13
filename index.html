@@ -169,6 +169,11 @@ img, svg { display: block; max-width: 100%; }
 .nav.on-dark .nav-links a { color: var(--t2-dark); }
 .nav-links a:hover { color: var(--ink); }
 .nav.on-dark .nav-links a:hover { color: #fff; }
+/* Sur fond sombre, le logo et « Se connecter » doivent s'inverser aussi
+   (sinon : noir sur noir, invisibles). */
+.nav.on-dark .logo { color: #fff; }
+.nav.on-dark .nav-cta .btn-link { color: var(--t2-dark); }
+.nav.on-dark .nav-cta .btn-link:hover { color: #fff; }
 .nav-cta { display: flex; align-items: center; gap: 8px; }
 .nav-cta .btn { height: 36px; padding: 0 14px; font-size: 13.5px; }
 
@@ -508,7 +513,10 @@ body.df-trial-active { padding-top: 52px; }
   background: var(--paper);
   border-radius: 8px;
   width: 100%;
-  max-width: 920px;
+  /* min-width:0 + plafond viewport : sans ça, la grille parente s'élargit à la
+     largeur min du contenu (boutons d'en-tête) et la modale déborde sur mobile. */
+  min-width: 0;
+  max-width: min(920px, calc(100vw - 16px));
   padding: 48px;
   position: relative;
   box-shadow: 0 40px 80px rgba(0,0,0,.4);
@@ -744,8 +752,19 @@ body.df-trial-active { padding-top: 52px; }
 
 @media (max-width: 640px) {
   .qg-grid { grid-template-columns: 1fr; }
-  .qg-modal { padding: 28px 22px; }
+  .qg-modal { padding: 28px 16px; }
   .qg-result { padding: 24px 18px; }
+  .qg-overlay { padding: 16px 8px; }
+  /* En-tête : titre pleine largeur, boutons en dessous (sinon le titre est
+     compressé à un mot par ligne et les boutons sortent de l'écran). */
+  .qg-header-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .qg-header-actions { flex-wrap: wrap; }
+  .qg-title { font-size: 26px; }
+}
+/* Focus clavier visible sur les champs (accessibilité) */
+.qg-input:focus-visible, .qg-textarea:focus-visible, .qg-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Champ SIRET avec auto-lookup */
@@ -4723,7 +4742,7 @@ window.DevisFlashAuth = (function () {
           console.warn(`[Auth] ${svc.url} failed:`, e.message);
         }
       }
-      throw new Error('Impossible de récupérer ton adresse IP. Vérifiez votre connexion internet.');
+      throw new Error('Connexion impossible pour le moment. Vérifie ta connexion internet et réessaie.');
     },
 
     async checkIPAvailable(ip) {
@@ -4751,7 +4770,7 @@ window.DevisFlashAuth = (function () {
       const userIP = await this.getUserIP(); // Throw si échoue
       const ipAvailable = await this.checkIPAvailable(userIP); // Throw si erreur
       if (!ipAvailable) {
-        throw new Error("Un compte a déjà été créé depuis cette adresse IP. Si c'est ton compte, connecte-toi avec ton email existant. Sinon, contacte l'admin.");
+        throw new Error("Un compte a déjà été créé depuis cette adresse IP. Si c'est ton compte, connecte-toi avec ton email existant. Sinon, écris-nous via la page Contact (en bas du site).");
       }
 
       // Signup Supabase
@@ -5648,12 +5667,12 @@ function Hero() {
             <span>Présentation</span>
           </div>
           <h1 className="display">
-            <SplitText text="Du brief au devis chiffré,"/>
+            <SplitText text="De la dictée au devis chiffré,"/>
             <br/>
             <span className="accent"><SplitText text="en 30 secondes."/></span>
           </h1>
           <p className="hero-lead reveal">
-            Dictez votre chantier en langage normal. L'IA chiffre chaque ligne au prix marché, ajoute les obligations légales de votre métier, calcule la TVA, et vous remet un devis prêt à envoyer. Sans Excel. Sans formulaire à dix champs.
+            Dicte ton chantier en langage normal. L'IA chiffre chaque ligne au prix marché, ajoute les obligations légales de ton métier, calcule la TVA, et te remet un devis prêt à envoyer. Sans Excel. Sans formulaire à dix champs.
           </p>
           <div className="hero-ctas reveal">
             <a href="#tarifs" className="btn btn-solid-dark">Essayer maintenant</a>
@@ -5665,8 +5684,8 @@ function Hero() {
               <span className="l">électricien, plombier, maçon, peintre, couvreur, menuisier, carreleur, façadier</span>
             </div>
             <div className="hero-meta-item">
-              <span className="v">2<span className="accent"> variantes</span></span>
-              <span className="l">standard + premium générées automatiquement</span>
+              <span className="v">6 <span className="accent">/</span> enseignes</span>
+              <span className="l">prix matériaux comparés : Leroy Merlin, Castorama, Brico Dépôt, Point P, Bricoman, Tout Faire</span>
             </div>
           </div>
         </div>
@@ -5717,7 +5736,8 @@ function Phone3D() {
 
               <div className="ps-total">
                 <span>Total TTC</span>
-                <span className="v">7 535,00 €</span>
+                {/* 680 + 3 420 + 1 920 = 6 020 € HT × 1,10 (TVA rénovation 10 %) */}
+                <span className="v">6 622,00 €</span>
               </div>
             </div>
           </div>
@@ -5732,89 +5752,28 @@ function Phone3D() {
       </div>
       <div className="phone-tag t2">
         <span className="pip"/>
-        <span><b>2 variantes</b><br/><small>standard + premium</small></span>
+        <span><b>Anti-oubli</b><br/><small>normes ajoutées</small></span>
       </div>
     </div>
   );
 }
 
-// Logos band — federations & syndicats BTP (factices)
+// Bandeau de badges — uniquement des FAITS sur le produit, aucune marque tierce.
+// (L'ancien bandeau imitait les logos d'organismes reels — CAPEB, Qualibat, FFB… —
+//  ce qui laissait croire a des partenariats inexistants : risque juridique.)
 const FedLogos = [
-  () => (
-    <svg viewBox="0 0 180 32" height="28" className="fl-svg">
-      <g stroke="currentColor" strokeWidth="1.4" fill="none">
-        <path d="M 6 24 L 16 6 L 26 24 Z"/>
-        <line x1="11" y1="20" x2="21" y2="20"/>
-      </g>
-      <text x="36" y="14" fontFamily="Inter Tight" fontSize="13" fontWeight="700" letterSpacing="-0.5" fill="currentColor">CAPEB</text>
-      <text x="36" y="26" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">CONFÉDÉRATION ARTISANS BTP</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 160 32" height="28" className="fl-svg">
-      <rect x="2" y="6" width="22" height="22" fill="currentColor"/>
-      <text x="13" y="22" fontFamily="Inter Tight" fontSize="13" fontWeight="800" fill="var(--paper)" textAnchor="middle">F</text>
-      <text x="32" y="16" fontFamily="Inter Tight" fontSize="14" fontWeight="700" letterSpacing="-0.3" fill="currentColor">Qualibat</text>
-      <text x="32" y="27" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">CERTIFICATION QUALITÉ</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 140 32" height="28" className="fl-svg">
-      <g stroke="currentColor" strokeWidth="1.4" fill="none">
-        <rect x="4" y="4" width="22" height="22"/>
-        <line x1="4" y1="15" x2="26" y2="15"/>
-        <line x1="15" y1="4" x2="15" y2="26"/>
-      </g>
-      <text x="36" y="14" fontFamily="Inter Tight" fontSize="14" fontWeight="700" letterSpacing="-0.4" fill="currentColor">FFB</text>
-      <text x="36" y="26" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">FÉDÉRATION FRANÇAISE BTP</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 180 32" height="28" className="fl-svg">
-      <g stroke="currentColor" strokeWidth="1.4" fill="none">
-        <circle cx="15" cy="16" r="11"/>
-        <path d="M 15 5 L 15 27 M 4 16 L 26 16"/>
-      </g>
-      <text x="36" y="16" fontFamily="Inter Tight" fontSize="13" fontWeight="700" letterSpacing="-0.2" fill="currentColor">RGE Éco-Artisan</text>
-      <text x="36" y="27" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">QUALIFICATION ENVIRONNEMENT</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 140 32" height="28" className="fl-svg">
-      <text x="0" y="22" fontFamily="Inter Tight" fontSize="20" fontStyle="italic" fontWeight="400" fill="currentColor">Batiactu</text>
-      <line x1="0" y1="26" x2="68" y2="26" stroke="currentColor"/>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 180 32" height="28" className="fl-svg">
-      <text x="0" y="14" fontFamily="Inter Tight" fontSize="9.5" fontWeight="700" letterSpacing="3" fill="currentColor">LE MONITEUR</text>
-      <text x="0" y="24" fontFamily="Inter Tight" fontSize="7" fontWeight="500" letterSpacing="3" fill="currentColor" opacity=".7">DU BÂTIMENT &amp; TP</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 180 32" height="28" className="fl-svg">
-      <g stroke="currentColor" strokeWidth="1.4" fill="none">
-        <path d="M 6 22 L 6 10 L 14 4 L 22 10 L 22 22 L 18 22 L 18 16 L 10 16 L 10 22 Z"/>
-      </g>
-      <text x="32" y="14" fontFamily="Inter Tight" fontSize="13" fontWeight="700" letterSpacing="-0.3" fill="currentColor">U2P</text>
-      <text x="32" y="26" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">UNION ARTISANS &amp; INDÉP.</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 160 32" height="28" className="fl-svg">
-      <text x="0" y="22" fontFamily="Inter Tight" fontSize="18" fontWeight="800" letterSpacing="-1" fill="currentColor">Pennylane</text>
-    </svg>
-  ),
-  () => (
-    <svg viewBox="0 0 160 32" height="28" className="fl-svg">
-      <g stroke="currentColor" strokeWidth="1.4" fill="none">
-        <path d="M 6 22 Q 6 6 16 16 Q 26 26 26 10"/>
-      </g>
-      <text x="32" y="16" fontFamily="Inter Tight" fontSize="13" fontWeight="700" letterSpacing="-0.2" fill="currentColor">Onaya</text>
-      <text x="32" y="26" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.5" fill="currentColor" opacity=".75">LOGICIEL DEVIS BTP</text>
-    </svg>
-  ),
-];
+  "TVA 5,5 / 10 / 20 % automatique",
+  "Auto-entrepreneur · art. 293 B CGI",
+  "Normes NF C 15-100 & NF DTU citées",
+  "Checklist CONSUEL électriciens",
+  "SIRET vérifié via l'API officielle de l'État",
+  "Métré sur plan : photo → m² par pièce",
+  "Prix comparés chez 6 enseignes",
+  "Devis conformes aux mentions obligatoires BTP",
+  "Données hébergées en Europe",
+].map((txt) => () => (
+  <span style={{fontFamily:"'JetBrains Mono', monospace", fontSize:11.5, letterSpacing:'.08em', textTransform:'uppercase', whiteSpace:'nowrap'}}>{txt}</span>
+));
 
 function LogosBand() {
   const all = [...FedLogos, ...FedLogos, ...FedLogos];
@@ -5853,7 +5812,7 @@ function Pourquoi() {
           <div className="p-col">
             <div className="n">II.01</div>
             <h4>Dictée vocale BTP</h4>
-            <p>Parlez comme vous parleriez au téléphone. « Démolition carrelage 12 m² à 25 €, plus pose receveur extra-plat 90 par 120. » L'IA comprend les unités, marques, normes du métier.</p>
+            <p>Parle comme tu parlerais au téléphone. « Démolition carrelage 12 m² à 25 €, plus pose receveur extra-plat 90 par 120. » L'IA comprend les unités, marques, normes du métier.</p>
           </div>
           <div className="p-col">
             <div className="n">II.02</div>
@@ -5867,8 +5826,8 @@ function Pourquoi() {
           </div>
           <div className="p-col">
             <div className="n">II.04</div>
-            <h4>Standard + Premium automatique</h4>
-            <p>Chaque devis génère deux variantes : standard (qualité courante) et premium (montée en gamme matériaux et garanties). Avec un argumentaire client prêt à coller en SMS pour vendre la premium.</p>
+            <h4>Métré sur plan</h4>
+            <p>Prends le plan en photo : l'IA lit les pièces, recopie les surfaces écrites et calcule celles qui manquent à partir des cotes — en te montrant ses calculs. Le métré part directement dans ton devis.</p>
           </div>
         </div>
       </div>
@@ -6119,7 +6078,7 @@ function CommentCaMarche() {
             <div className="cm-3d"><Object3DDoc/></div>
             <div className="num">III.02</div>
             <h3>L'IA chiffre et vérifie</h3>
-            <p>Chaque ligne au prix marché. Quantités calculées avec marges techniques. Obligations légales du métier ajoutées. Sommes recalculées par un garde-fou. Variantes Standard et Premium générées.</p>
+            <p>Chaque ligne au prix marché. Quantités calculées avec marges techniques. Obligations légales du métier ajoutées. Sommes recalculées par un garde-fou. Rien n'est oublié, rien n'est faux.</p>
           </div>
           <div className="cm-step">
             <div className="cm-3d"><Object3DEnvelope/></div>
@@ -6148,7 +6107,7 @@ function Produit() {
           <p className="lead">Chaque devis généré par DevisFlash n'est pas un simple bout de papier avec un total. C'est un dossier complet, pensé pour ne pas te faire avoir.</p>
           <ul className="prod-list">
             <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Auto-remplissage SIRET —</b> tape ton numéro, l'API officielle gouv remplit nom, adresse, forme juridique.</span></li>
-            <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Détection TVA réelle —</b> 20% neuf, 10% rénovation, 5,5% rénovation énergétique. L'IA détecte depuis ton brief.</span></li>
+            <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Détection TVA réelle —</b> 20% neuf, 10% rénovation, 5,5% rénovation énergétique. L'IA le détecte depuis ta description du chantier.</span></li>
             <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Alertes urbanisme automatiques —</b> DP, PC, étude RE2020 si le chantier le nécessite (extension, changement d'usage).</span></li>
             <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Liste de courses fournisseur —</b> tous les matériaux Cedeo/Point.P avec quantités, marges techniques, références.</span></li>
             <li><svg className="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 12 10 17 19 7"/></svg><span><b>Message client prêt à envoyer —</b> SMS court ou email pro, déjà rédigé, avec le nom du client et les montants.</span></li>
@@ -6177,7 +6136,8 @@ function Produit() {
               <div className="dash-row hi"><span className="n">Pose meuble double vasque<small>+ mitigeur thermostatique</small></span><span className="q">1 u</span><span className="a">550,00 €</span></div>
               <div className="dash-row"><span className="n">Pose carrelage mural + sol<small>14 m² · joints + finitions</small></span><span className="q">14 m²</span><span className="a">660,00 €</span></div>
             </div>
-            <div className="dash-total"><span className="l">TOTAL TTC</span><span className="v">7 535,00 €</span></div>
+            {/* 490 + 650 + 550 + 660 = 2 350 € HT × 1,10 (TVA rénovation 10 %) */}
+            <div className="dash-total"><span className="l">TOTAL TTC</span><span className="v">2 585,00 €</span></div>
           </div>
         </div>
       </div>
@@ -6188,7 +6148,7 @@ function Produit() {
 // STATS — huge numbers on black
 function Stats() {
   const [v, setV] = useState([0,0,0,0]);
-  const targets = [8, 3, 2, 4];
+  const targets = [8, 6, 2, 4];
   const ref = useRef(null);
   const [started, setStarted] = useState(false);
   useEffect(() => {
@@ -6219,7 +6179,7 @@ function Stats() {
           <span className="rn">V</span>
           <span>Bénéfices concrets</span>
         </div>
-        <h2 className="h2 split" style={{maxWidth:'22ch'}}><SplitText text="Ce que DevisFlash fait, mesuré sur des vrais chantiers."/></h2>
+        <h2 className="h2 split" style={{maxWidth:'22ch'}}><SplitText text="Ce que DevisFlash change sur tes chantiers."/></h2>
 
         <div className="stats-grid reveal">
           <div className="stat-cell">
@@ -6228,9 +6188,9 @@ function Stats() {
             <div className="stat-sub">ÉLEC · PLOMB · MAÇON · PEINT · COUVR · MENUI · CARREL · FAÇAD</div>
           </div>
           <div className="stat-cell">
-            <div className="stat-num">{fmt(v[1])}<span className="u">/devis</span></div>
-            <div className="stat-lbl">Variantes générées : standard et premium, comparables</div>
-            <div className="stat-sub">+ ARGUMENTAIRE VENTE PREMIUM PRÊT À COLLER</div>
+            <div className="stat-num">{fmt(Math.round(v[1]))}</div>
+            <div className="stat-lbl">Enseignes comparées pour tes prix matériaux</div>
+            <div className="stat-sub">LEROY MERLIN · CASTORAMA · BRICO DÉPÔT · POINT P · BRICOMAN · TOUT FAIRE</div>
           </div>
           <div className="stat-cell">
             <div className="stat-num">{fmt(Math.round(v[2]))}<span className="u">×</span></div>
@@ -6289,15 +6249,16 @@ function Pricing() {
             <ul className="plan-feats">
               <li><Check/> Devis illimités par dictée vocale</li>
               <li><Check/> 8 métiers BTP couverts avec obligations légales</li>
-              <li><Check/> Variantes Standard + Premium automatiques</li>
+              <li><Check/> Métré sur plan : photo → m² par pièce dans le devis</li>
+              <li><Check/> Assistant conseil : photo + question → diagnostic IA</li>
               <li><Check/> Liste de courses fournisseur</li>
               <li><Check/> 4 styles de devis (Classique, Moderne, Élégant, Nature)</li>
               <li><Check/> Auto-remplissage SIRET</li>
               <li><Check/> Photos chantier analysées par l'IA</li>
-              <li><Check/> Recherche produits chez magasins proches</li>
+              <li><Check/> Recherche des produits dans les magasins proches de chez toi</li>
               <li><Check/> Alertes rentabilité + litige</li>
               <li><Check/> Messages clients SMS + email pré-rédigés</li>
-              <li><Check/> Support prioritaire par email & chat</li>
+              <li><Check/> Support prioritaire par email</li>
             </ul>
           </div>
         </div>
@@ -6452,19 +6413,19 @@ function FAQ() {
   const [open, setOpen] = useState(0);
   const items = [
     { q: "Qu'est-ce que DevisFlash fait que mon Excel ou Tolteck ne fait pas ?",
-      a: "DevisFlash ne te demande pas de remplir des lignes. Tu dictes ton chantier en français normal, l'IA chiffre chaque ligne au prix marché, ajoute les obligations légales spécifiques à ton métier (CONSUEL pour l'élec, étanchéité SPEC pour le plombier, étude RE2020 pour le maçon), repère les autorisations urbanisme nécessaires (DP, PC), et te livre deux variantes (Standard et Premium) avec un argumentaire prêt à vendre la Premium." },
+      a: "DevisFlash ne te demande pas de remplir des lignes. Tu dictes ton chantier en français normal, l'IA chiffre chaque ligne au prix marché, ajoute les obligations légales spécifiques à ton métier (CONSUEL pour l'élec, étanchéité SPEC pour le plombier, étude RE2020 pour le maçon), repère les autorisations urbanisme nécessaires (DP, PC), et signale tout ce que tu as oublié de mentionner — avec un score de confiance pour savoir si ta description est assez précise." },
     { q: "Comment être sûr que les calculs du devis sont justes ?",
       a: "Chaque devis passe par deux vérifications indépendantes : l'IA chiffre, puis un code dédié recalcule systématiquement tous les totaux à partir des lignes, vérifie la TVA, l'acompte, et compare chaque prix au m² avec les fourchettes marché 2026. Si quelque chose sort de l'ordinaire, tu es alerté avant d'envoyer. Aucun mauvais total ne quitte ton écran." },
     { q: "Quels métiers sont couverts ?",
       a: "Huit métiers BTP avec leur checklist d'obligations légales spécifique : électricien (CONSUEL, mise à la terre, parafoudre, DAAF), plombier (étanchéité SPEC, test mise en eau, VMC), maçon (étude G2, RE2020, dommages-ouvrage), peintre, couvreur (échafaudage, amiante <1997), menuisier (RGE QualiBat), carreleur (primaire, SPEC), façadier (échafaudage, traitement fissures)." },
     { q: "Comment l'IA détecte le bon taux de TVA ?",
-      a: "DevisFlash analyse ton brief : si tu parles de neuf, c'est 20%. Si c'est de la rénovation sur un logement de plus de 2 ans, c'est 10%. Si c'est de la rénovation énergétique (PAC, isolation, panneau solaire), c'est 5,5%. Si le taux configuré dans tes paramètres ne correspond pas à ce qu'elle détecte, elle t'alerte avant que tu envoies le devis." },
+      a: "DevisFlash analyse ta description : si tu parles de neuf, c'est 20%. Si c'est de la rénovation sur un logement de plus de 2 ans, c'est 10%. Si c'est de la rénovation énergétique (PAC, isolation, panneau solaire), c'est 5,5%. Si le taux configuré dans tes paramètres ne correspond pas à ce qu'elle détecte, elle t'alerte avant que tu envoies le devis." },
     { q: "Est-ce que je peux ajuster un devis après génération ?",
       a: "Oui. Toutes les lignes sont éditables : quantités, prix unitaires, descriptions. Tu peux ajouter des lignes, en supprimer. Le total se recalcule en direct. Tu choisis aussi le style du devis selon ton client : Classique, Moderne, Élégant, ou Nature." },
     { q: "Et la liste de matériaux à acheter chez Cedeo/Point.P ?",
-      a: "Chaque devis génère automatiquement une liste de courses fournisseur avec les bonnes quantités, les marges techniques (coupe, chevauchement, casse), les marques recommandées, et la distinction Standard / Premium. Tu imprimes, tu vas chez Cedeo, tu achètes tout en une fois sans oubli." },
+      a: "Chaque devis génère automatiquement une liste de courses fournisseur avec les bonnes quantités, les marges techniques (coupe, chevauchement, casse) et les marques recommandées — et le comparateur te donne les prix chez 6 enseignes. Tu imprimes, tu achètes tout en une fois sans oubli." },
     { q: "Comment se passe l'essai ?",
-      a: "Tu testes maintenant, sur ton chantier réel. Si ça te fait gagner du temps et que tu trouves ça utile, tu souscris. Sinon, tu pars sans rien devoir. Tes devis restent exportables." },
+      a: "Tu testes maintenant, sur ton chantier réel. Si ça te fait gagner du temps et que tu trouves ça utile, tu souscris. Sinon, tu pars sans rien devoir. Tes données sont conservées et redeviennent accessibles dès que tu t'abonnes." },
   ];
   return (
     <section className="section light" id="questions">
@@ -6544,7 +6505,7 @@ function Footer() {
               <svg className="logo-mark" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12 L 12 3 L 21 12 L 17 12 L 17 21 L 7 21 L 7 12 Z" fillOpacity=".15"/><rect x="9" y="14" width="6" height="7"/><path d="M3 12 L 12 3 L 21 12" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
               DevisFlash
             </a>
-            <p>Logiciel de devis et facturation pour les artisans du bâtiment français. Édité par DevisFlash SAS, Paris.</p>
+            <p>Logiciel de devis pour les artisans du bâtiment français. Fait en France. 🇫🇷</p>
             <div className="footer-status">
               <span className="pip"/>
               <span style={{color:'var(--t2-dark)', fontSize:13}}>Tous les systèmes opérationnels</span>
@@ -6556,21 +6517,21 @@ function Footer() {
               <li><a href="#methode">Dictée vocale</a></li>
               <li><a href="#produit">Obligations métier</a></li>
               <li><a href="#produit">Liste de courses</a></li>
-              <li><a href="#produit">Variantes Standard/Premium</a></li>
+              <li><a href="#produit">Métré sur plan</a></li>
               <li><a href="#tarifs">Tarifs</a></li>
             </ul>
           </div>
           <div className="footer-col">
             <h5>Métiers</h5>
             <ul>
-              <li><a href="#">Électriciens</a></li>
-              <li><a href="#">Plombiers, chauffagistes</a></li>
-              <li><a href="#">Maçons</a></li>
-              <li><a href="#">Peintres</a></li>
-              <li><a href="#">Couvreurs, zingueurs</a></li>
-              <li><a href="#">Menuisiers</a></li>
-              <li><a href="#">Carreleurs</a></li>
-              <li><a href="#">Façadiers</a></li>
+              <li><a href="#produit">Électriciens</a></li>
+              <li><a href="#produit">Plombiers, chauffagistes</a></li>
+              <li><a href="#produit">Maçons</a></li>
+              <li><a href="#produit">Peintres</a></li>
+              <li><a href="#produit">Couvreurs, zingueurs</a></li>
+              <li><a href="#produit">Menuisiers</a></li>
+              <li><a href="#produit">Carreleurs</a></li>
+              <li><a href="#produit">Façadiers</a></li>
             </ul>
           </div>
           <div className="footer-col">
@@ -6584,11 +6545,12 @@ function Footer() {
           <div className="footer-col">
             <h5>Société</h5>
             <ul>
-              <li><a href="#">À propos</a></li>
-              <li><a href="#">Contact</a></li>
-              <li><a href="#">Mentions légales</a></li>
-              <li><a href="#">Confidentialité</a></li>
-              <li><a href="#">CGV</a></li>
+              {/* Les documents s'ouvrent en modale (composant LegalModal, script app) */}
+              <li><a href="#produit">À propos</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: 'mentions' })); }}>Contact</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: 'mentions' })); }}>Mentions légales</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: 'confidentialite' })); }}>Confidentialité</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: 'cgv' })); }}>CGV</a></li>
             </ul>
           </div>
         </div>
@@ -6624,7 +6586,7 @@ async function lookupSiret(query) {
   } catch (e) {
     throw new Error("Impossible de joindre l'API (vérifie ta connexion internet).");
   }
-  if (!res.ok) throw new Error(`Erreur API (HTTP ${res.status}). Réessaye dans un instant.`);
+  if (!res.ok) throw new Error(`Erreur API (HTTP ${res.status}). Réessaie dans un instant.`);
   const data = await res.json();
   if (!data.results || data.results.length === 0) {
     // Erreur enrichie avec un lien vérifiable
@@ -7764,15 +7726,15 @@ async function callGeminiExpert(ctx, dictee, photos) {
           throw new Error("Erreur réseau : " + (e.message || 'inconnue'));
         }
         if (!e.overloaded) {
-          if (e.status === 400) throw new Error("Requête invalide (HTTP 400). " + (e.message || ''));
-          if (e.status === 403) throw new Error("Clé API refusée (HTTP 403). " + (e.message || ''));
+          if (e.status === 400) { console.error("[DevisFlash] IA HTTP 400:", e.message); throw new Error("L'assistant IA n'a pas pu traiter ta demande. Réessaie — si ça persiste, reformule ta description."); }
+          if (e.status === 403) { console.error("[DevisFlash] IA HTTP 403:", e.message); throw new Error("L'assistant IA est momentanément indisponible. Réessaie dans quelques minutes."); }
           throw new Error(`HTTP ${e.status} — ${e.message || 'erreur inconnue'}`);
         }
         if (attempt === 0) await sleep(1200);
       }
     }
   }
-  throw new Error("Toutes les IA sont indisponibles (Bedrock + Gemini saturés). Réessaye dans 1 minute.");
+  throw new Error("L'assistant IA est très demandé en ce moment. Réessaie dans une minute.");
 }
 
 // === PRODUCT FINDER IA (Gemini + Google Search grounding) ===
@@ -8044,14 +8006,14 @@ async function callGeminiConseil(question, metier, photos) {
         if (!e.status) throw new Error("Impossible de joindre l'API Gemini.");
         if (!e.overloaded) {
           if (e.status === 400) throw new Error("Requête invalide.");
-          if (e.status === 403) throw new Error("Clé API refusée.");
+          if (e.status === 403) { console.error("[DevisFlash] IA HTTP 403 (conseil)"); throw new Error("L'assistant IA est momentanément indisponible. Réessaie dans quelques minutes."); }
           throw new Error(e.message);
         }
         if (attempt === 0) await sleep(1200);
       }
     }
   }
-  throw new Error("Tous les modèles Gemini sont saturés. Réessaye dans 1 minute.");
+  throw new Error("Tous les modèles Gemini sont saturés. Réessaie dans 1 minute.");
 }
 
 // === MÉTRÉ SUR PLAN (lecture de plan par l'IA) ===
@@ -8088,7 +8050,7 @@ async function callGeminiPlan(photos) {
       }
     }
   }
-  throw new Error("Tous les modèles IA sont saturés. Réessaye dans 1 minute.");
+  throw new Error("Tous les modèles IA sont saturés. Réessaie dans 1 minute.");
 }
 
 // =====================================================================
@@ -8804,10 +8766,24 @@ function categorize(line) {
 const fmtEUR = (n) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 const fmtQty = (n) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Numéro de devis : généré UNE fois par devis (séquentiel, compteur local),
+// puis réutilisé partout (écran, impression, markdown). L'ancien code tirait un
+// numéro ALÉATOIRE à chaque affichage : le devis imprimé ne portait pas le même
+// numéro que l'écran, et il changeait à chaque modification d'une ligne.
+let _devisNumCourant = null;
+function newDevisNum() {
+  const y = new Date().getFullYear();
+  let seq = 1;
+  try {
+    seq = (parseInt(localStorage.getItem('devisFlash_devisSeq') || '0', 10) || 0) + 1;
+    localStorage.setItem('devisFlash_devisSeq', String(seq));
+  } catch (e) {}
+  _devisNumCourant = `${y}-${String(seq).padStart(3, '0')}`;
+  return _devisNumCourant;
+}
 function generateDevisNum() {
-  const d = new Date();
-  const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${seq}`;
+  // Renvoie le numéro du devis EN COURS (stable) — en crée un si besoin.
+  return _devisNumCourant || newDevisNum();
 }
 
 function buildQuoteMarkdown(artisan, client, projet, parsedLines) {
@@ -9287,6 +9263,14 @@ function QuoteGenerator({ open, onClose }) {
   // --- Mode IA Expert (Gemini) ---
   // Modes utilisateur : 'expert' (génère un devis IA) | 'conseil' (diagnostic) | 'rapide' (legacy, non accessible UI)
   const [mode, setMode] = React.useState('expert');
+  // Changer d'onglet coupe la dictée en cours : sinon le micro continue
+  // d'enregistrer en arrière-plan et remplit un champ que l'artisan ne voit plus.
+  React.useEffect(() => {
+    if (isRecording) {
+      try { if (recognitionRef.current) recognitionRef.current.stop(); } catch(_) {}
+      setIsRecording(false);
+    }
+  }, [mode]);
   const [toast, setToast] = React.useState(null); // { msg, type } | null
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -9696,6 +9680,7 @@ function QuoteGenerator({ open, onClose }) {
       } catch (e) {
         console.error('[DevisFlash] Post-validator échec :', e);
       }
+      newDevisNum(); // nouveau devis → nouveau numéro (stable ensuite pour l'écran ET l'impression)
       setExpertResult(result);
       setExpertVariant('standard');
       // Peuple les lignes éditables pour les 2 variantes
@@ -9818,7 +9803,7 @@ function QuoteGenerator({ open, onClose }) {
     const bloc = `\n\nSURFACES RELEVÉES SUR PLAN (métré IA) :\n${lignesM2}\nTOTAL : ${String(planResult.total_m2 ?? '?').replace('.', ',')} m²`;
     setExpertDictee(prev => (prev || '').trimEnd() + bloc);
     setMode('expert');
-    showToast("Métré ajouté au brief du devis ✓");
+    showToast("Métré ajouté à la description du chantier ✓");
   };
 
   // --- Historique localStorage ---
@@ -9971,6 +9956,7 @@ function QuoteGenerator({ open, onClose }) {
       return;
     }
 
+    newDevisNum(); // nouveau devis → nouveau numéro stable
     const md = buildQuoteMarkdown(artisan, client, projet, valid);
     setResult(md);
     setGenerated(true);
@@ -10045,9 +10031,9 @@ function QuoteGenerator({ open, onClose }) {
             </div>
             <p className="qg-sub">
               {mode === 'conseil'
-                ? 'Décris ton problème (et ajoute une photo si possible). L\'IA te donne un diagnostic + solutions étapes par étapes.'
+                ? 'Décris ton problème (et ajoute une photo si possible). L\'IA te donne un diagnostic + des solutions étape par étape.'
                 : mode === 'plan'
-                ? 'Photographie un plan : l\'IA lit les pièces, calcule les m² manquants depuis les cotes, et injecte le tout dans ton devis.'
+                ? 'Photographie un plan : l\'IA lit les pièces, calcule les m² manquants à partir des cotes, et les ajoute à ton devis.'
                 : 'Décris ton chantier en quelques phrases (à l\'écrit ou en dictant). L\'IA génère un devis complet en ~30 secondes avec liste anti-oubli.'}
               {draftStatus !== 'idle' && (
                 <span className={`qg-draft-status qg-draft-${draftStatus}`}>
@@ -10681,7 +10667,7 @@ function QuoteGenerator({ open, onClose }) {
             <button className="btn btn-solid-dark" onClick={generate}>Générer le devis</button>
           )}
           {mode === 'expert' && (
-            <button className="btn btn-solid-dark" onClick={generateExpert} disabled={expertLoading} title="L'IA analyse votre description et génère un devis détaillé avec tous les postes (matériel + main d'œuvre)">
+            <button className="btn btn-solid-dark" onClick={generateExpert} disabled={expertLoading} title="L'IA analyse ta description et génère un devis détaillé avec tous les postes (matériel + main d'œuvre)">
               {expertLoading ? (
                 <React.Fragment>
                   <span className="qg-spinner"/> L'IA réfléchit…
@@ -11826,7 +11812,7 @@ function CountryPicker({ onSelect, onClose, current }) {
   return (
     <div className="af-overlay" onClick={(e) => { if (e.target.classList.contains('af-overlay')) onClose(); }}>
       <div className="af-country-list">
-        <h3>Choisissez votre pays</h3>
+        <h3>Choisis ton pays</h3>
         <input className="af-country-search" placeholder="Rechercher un pays…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus/>
         <div className="af-country-items">
           {list.map(c => (
@@ -11987,6 +11973,13 @@ function OtpInput({ value, onChange, onComplete, disabled, length = 8 }) {
 function AuthModal({ open, mode: initialMode, onClose, onSuccess }) {
   const [mode, setMode] = React.useState(initialMode || 'login'); // 'login' | 'signup' | 'signup-step2' | 'signup-email-confirm'
   const [error, setError] = React.useState('');
+  // Échap ferme la modale — même comportement que le générateur (cohérence).
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
   const [loading, setLoading] = React.useState(false);
   const [showPwd, setShowPwd] = React.useState(false);
   const [googleOpen, setGoogleOpen] = React.useState(false);
@@ -12228,7 +12221,7 @@ function AuthModal({ open, mode: initialMode, onClose, onSuccess }) {
                 </div>
                 <label className="af-terms">
                   <input type="checkbox" checked={su.terms} onChange={(e) => setSu({...su, terms: e.target.checked})}/>
-                  <span>J'ai lu les <a href="#" onClick={(e) => e.preventDefault()}>conditions d'utilisation</a> de DevisFlash et je les accepte.</span>
+                  <span>J'ai lu les <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: 'cgv' })); }}>conditions d'utilisation</a> de DevisFlash et je les accepte.</span>
                 </label>
                 <button className="af-submit" type="submit" disabled={loading}>
                   {loading ? 'Création en cours…' : 'Créer mon compte (14 jours gratuits)'}
@@ -12306,7 +12299,7 @@ function AuthModal({ open, mode: initialMode, onClose, onSuccess }) {
           {mode === 'signup-step2' && (
             <React.Fragment>
               <h2 className="af-title">Encore quelques détails</h2>
-              <p className="af-sub">Indiquez où est basée votre entreprise pour les bons taux de TVA et mentions légales.</p>
+              <p className="af-sub">Indique où est basée ton entreprise pour les bons taux de TVA et mentions légales.</p>
               {error && <div className="af-error-msg">{error}</div>}
               <form onSubmit={submitSignupStep2}>
                 <div className="af-country-section">
@@ -13276,15 +13269,19 @@ function App() {
     const openAuth    = (e) => { setAuthMode(e?.detail?.mode || 'login'); setAuthOpen(true); };
     const openAccount = () => setAccountOpen(true);
     const openAdmin   = () => setAdminOpen(true);
+    const openLegal   = (e) => setLegalDoc(e?.detail || 'mentions');
     window.addEventListener('devisflash:open-auth', openAuth);
     window.addEventListener('devisflash:open-account', openAccount);
     window.addEventListener('devisflash:open-admin', openAdmin);
+    window.addEventListener('devisflash:open-legal', openLegal);
     return () => {
       window.removeEventListener('devisflash:open-auth', openAuth);
       window.removeEventListener('devisflash:open-account', openAccount);
       window.removeEventListener('devisflash:open-admin', openAdmin);
+      window.removeEventListener('devisflash:open-legal', openLegal);
     };
   }, []);
+  const [legalDoc, setLegalDoc] = React.useState(null); // 'mentions' | 'confidentialite' | 'cgv' | null
 
   React.useEffect(() => {
     document.documentElement.style.setProperty('--accent', t.accent);
@@ -13321,6 +13318,7 @@ function App() {
       <AuthModal open={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} onSuccess={onAuthSuccess}/>
       <AccountModal open={accountOpen} onClose={() => setAccountOpen(false)}/>
       <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)}/>
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)}/>
       {user && !user.accessAllowed && (
         <TrialExpiredModal user={user} onLogout={() => window.DevisFlashAuth.logout()}/>
       )}
@@ -13375,6 +13373,77 @@ function TrialBanner({ user, onSubscribe }) {
 }
 
 // Modal de blocage : affichée si essai expiré ET pas d'abonnement
+// ─── Pages légales (mentions, confidentialité, CGV) ───
+// Les [À COMPLÉTER : …] sont volontaires : Ayoub les remplira quand son statut
+// (auto-entrepreneur / société) et son email de contact seront fixés.
+const LEGAL_DOCS = {
+  mentions: {
+    title: 'Mentions légales',
+    body: [
+      ['Éditeur du site', "DevisFlash — [À COMPLÉTER : nom du responsable, statut (ex. entrepreneur individuel), SIRET une fois immatriculé]. Directeur de la publication : [À COMPLÉTER]."],
+      ['Contact', "[À COMPLÉTER : adresse email de contact]"],
+      ['Hébergement du site', "GitHub Pages — GitHub, Inc., 88 Colin P. Kelly Jr Street, San Francisco, CA 94107, États-Unis."],
+      ['Hébergement des données', "Supabase (base de données et authentification) — données hébergées dans l'Union européenne (région Paris, eu-west-3)."],
+      ['Propriété intellectuelle', "L'ensemble du site (textes, interface, code) est la propriété de son éditeur. Toute reproduction sans autorisation est interdite. Les noms d'enseignes cités dans le comparateur (Leroy Merlin, Castorama, Brico Dépôt, Point P, Bricoman, Tout Faire) sont des marques appartenant à leurs propriétaires respectifs, citées à titre de référence de prix uniquement, sans partenariat ni affiliation."],
+    ],
+  },
+  confidentialite: {
+    title: 'Politique de confidentialité',
+    body: [
+      ['Données collectées', "Compte : email, mot de passe (chiffré), pays, téléphone (optionnel). Usage anti-fraude : adresse IP à l'inscription. Contenu : tes devis, les informations de ton entreprise (nom, SIRET, logo) et de tes clients, tes descriptions de chantier et photos."],
+      ['Où sont stockées tes données', "Sur Supabase, dans l'Union européenne (région Paris). Certaines données restent aussi dans ton navigateur (localStorage) : tarifs personnalisés, brouillons."],
+      ['Traitement par intelligence artificielle', "Quand tu utilises le générateur, ta description de chantier, tes photos (chantier ou plan) et les informations du devis sont transmises à un service d'IA (Google Gemini) via notre serveur pour produire le devis. Ne mets pas dans la dictée d'informations sensibles sans rapport avec le chantier."],
+      ['Durée de conservation', "Tes données sont conservées tant que ton compte existe. Tu peux demander la suppression de ton compte et de tes données à tout moment : [À COMPLÉTER : email de contact]."],
+      ['Tes droits (RGPD)', "Accès, rectification, suppression, portabilité, opposition. Écris à [À COMPLÉTER : email de contact]. Tu peux aussi saisir la CNIL (cnil.fr)."],
+      ['Cookies', "Pas de cookies publicitaires. Seuls des stockages techniques (session de connexion, préférences) sont utilisés."],
+    ],
+  },
+  cgv: {
+    title: "Conditions générales d'utilisation et de vente",
+    body: [
+      ['Le service', "DevisFlash est un logiciel en ligne d'aide à la création de devis pour artisans du bâtiment : génération assistée par IA, métré sur plan, comparateur de prix matériaux."],
+      ['Essai gratuit', "14 jours d'essai gratuit, sans carte bancaire. À la fin de l'essai, la génération de devis nécessite un abonnement ; tes données sont conservées et de nouveau accessibles dès la souscription."],
+      ['Prix', "Abonnement : 29,99 € HT par mois, sans engagement. Résiliable à tout moment ; la résiliation prend effet à la fin de la période en cours. [À COMPLÉTER : modalités de paiement une fois Stripe activé]"],
+      ['Ta responsabilité sur les devis', "IMPORTANT : DevisFlash est un outil d'assistance. Les devis générés (prix, quantités, mentions, normes citées) doivent être vérifiés par tes soins avant envoi — toi seul connais ton chantier et tes coûts réels. L'éditeur ne peut être tenu responsable d'une erreur dans un devis envoyé à un client, ni des suites commerciales ou juridiques d'un chantier."],
+      ['Disponibilité', "Service fourni « en l'état », avec des dépendances externes (hébergeur, services d'IA). Aucune disponibilité continue n'est garantie pendant la phase de lancement."],
+      ['Droit applicable', "Droit français. Litiges : tentative de résolution amiable d'abord, sinon tribunaux compétents français. [À COMPLÉTER : ville du tribunal selon domiciliation]"],
+    ],
+  },
+};
+
+function LegalModal({ doc, onClose }) {
+  React.useEffect(() => {
+    if (!doc) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [doc]);
+  if (!doc || !LEGAL_DOCS[doc]) return null;
+  const d = LEGAL_DOCS[doc];
+  return (
+    <div className="qg-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="qg-modal" style={{maxWidth: 680}} role="dialog" aria-modal="true" aria-label={d.title}>
+        <button type="button" className="qg-close" onClick={onClose} aria-label="Fermer">✕</button>
+        <div className="qg-title" style={{fontSize: 26, marginBottom: 6}}>{d.title}</div>
+        <p style={{fontSize: 12.5, color: 'var(--t2-light)', margin: '0 0 18px'}}>Dernière mise à jour : juillet 2026</p>
+        {d.body.map(([h, txt], i) => (
+          <div key={i} style={{marginBottom: 16}}>
+            <div style={{fontWeight: 650, fontSize: 14, marginBottom: 4}}>{h}</div>
+            <p style={{fontSize: 13.5, lineHeight: 1.6, color: 'var(--t2-light)', margin: 0}}>{txt}</p>
+          </div>
+        ))}
+        <div style={{display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap'}}>
+          {Object.keys(LEGAL_DOCS).filter(k => k !== doc).map(k => (
+            <button key={k} type="button" className="btn btn-link" style={{fontSize: 13}} onClick={() => window.dispatchEvent(new CustomEvent('devisflash:open-legal', { detail: k }))}>
+              {LEGAL_DOCS[k].title} →
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TrialExpiredModal({ user, onLogout }) {
   return (
     <div className="trial-expired-overlay">
@@ -13384,7 +13453,7 @@ function TrialExpiredModal({ user, onLogout }) {
         </div>
         <h2>Ton essai gratuit est terminé</h2>
         <p>
-          Tu as utilisé tes 14 jours d'essai de DevisFlash. Pour continuer à générer des devis IA, ajoute un abonnement.
+          Tu as utilisé tes 14 jours d'essai de DevisFlash. Pour continuer à générer des devis, active ton abonnement — tes devis et réglages sont conservés.
         </p>
         <div className="trial-expired-plans" style={{justifyContent:'center'}}>
           <div className="tex-plan recommended" style={{maxWidth:'320px'}}>
@@ -13410,7 +13479,7 @@ function TrialExpiredModal({ user, onLogout }) {
           </button>
         </div>
         <p className="trial-expired-foot">
-          Tu peux toujours te connecter à <b>{user.email}</b> pour consulter tes devis passés. Aucune donnée n'est supprimée.
+          Rien n'est supprimé : tes devis et réglages sont conservés sur le compte <b>{user.email}</b>, et tu les retrouveras dès que tu actives ton abonnement.
         </p>
       </div>
     </div>
