@@ -8054,6 +8054,43 @@ async function callGeminiConseil(question, metier, photos) {
   throw new Error("Tous les modèles Gemini sont saturés. Réessaye dans 1 minute.");
 }
 
+// === MÉTRÉ SUR PLAN (lecture de plan par l'IA) ===
+// Prototype validé le 2026-07-13 : 7/7 pièces sur plan de test, surfaces
+// imprimées recopiées + surfaces manquantes calculées depuis les cotes.
+function buildPlanPrompt() {
+  return `Tu es un métreur expert du BTP. Voici la ou les photos d'un plan (appartement, maison ou pièce).
+
+Extrais TOUTES les pièces avec leur surface en m² :
+- Si la surface est écrite sur le plan, recopie-la (source: "imprimée").
+- Si elle n'est pas écrite mais que les cotes (dimensions en mètres) le permettent, CALCULE-la (source: "calculée", montre le calcul).
+- Si impossible, mets null (source: "inconnue") et explique dans "remarques".
+Ignore balcons/terrasses sauf s'ils sont cotés — liste-les alors avec type "extérieur".
+
+Réponds UNIQUEMENT en JSON valide :
+{
+  "pieces": [{"nom": "...", "surface_m2": 0.0, "source": "imprimée|calculée|inconnue", "calcul": "..."}],
+  "total_m2": 0.0,
+  "remarques": "..."
+}`;
+}
+
+async function callGeminiPlan(photos) {
+  const prompt = buildPlanPrompt();
+  for (let i = 0; i < GEMINI_MODELS_FALLBACK.length; i++) {
+    const model = GEMINI_MODELS_FALLBACK[i];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await tryGeminiModel(model, prompt, null, photos);
+      } catch (e) {
+        if (!e.status) throw new Error("Impossible de joindre l'IA.");
+        if (!e.overloaded) throw new Error(e.message);
+        if (attempt === 0) await sleep(1200);
+      }
+    }
+  }
+  throw new Error("Tous les modèles IA sont saturés. Réessaye dans 1 minute.");
+}
+
 // =====================================================================
 
 // Aplatit une structure hiérarchique prestations/sous_postes/lignes en lignes flat.
@@ -9745,6 +9782,45 @@ function QuoteGenerator({ open, onClose }) {
     setConseilLoading(false);
   };
 
+  // --- Métré sur plan ---
+  const [planPhotos, setPlanPhotos] = React.useState([]);
+  const [planLoading, setPlanLoading] = React.useState(false);
+  const [planResult, setPlanResult] = React.useState(null);
+  const [planError, setPlanError] = React.useState('');
+
+  const generatePlan = async () => {
+    setPlanError('');
+    setPlanResult(null);
+    if (planPhotos.length === 0) {
+      setPlanError("Ajoute d'abord une photo de ton plan (photo ou galerie).");
+      return;
+    }
+    setPlanLoading(true);
+    try {
+      const result = await callGeminiPlan(planPhotos);
+      if (!result || !Array.isArray(result.pieces) || result.pieces.length === 0) {
+        throw new Error("L'IA n'a trouvé aucune pièce sur ce plan. Essaie une photo plus nette ou mieux cadrée.");
+      }
+      setPlanResult(result);
+    } catch (e) {
+      setPlanError(e.message || "Erreur lors de la lecture du plan.");
+    }
+    setPlanLoading(false);
+  };
+
+  // Injecte le métré dans la dictée du devis, puis bascule sur l'onglet devis.
+  const addPlanToDevis = () => {
+    if (!planResult) return;
+    const lignesM2 = planResult.pieces
+      .filter(p => p.surface_m2 != null)
+      .map(p => `- ${p.nom} : ${String(p.surface_m2).replace('.', ',')} m²${p.source === 'calculée' ? ' (calculée depuis les cotes)' : ''}`)
+      .join('\n');
+    const bloc = `\n\nSURFACES RELEVÉES SUR PLAN (métré IA) :\n${lignesM2}\nTOTAL : ${String(planResult.total_m2 ?? '?').replace('.', ',')} m²`;
+    setExpertDictee(prev => (prev || '').trimEnd() + bloc);
+    setMode('expert');
+    showToast("Métré ajouté au brief du devis ✓");
+  };
+
   // --- Historique localStorage ---
   const HISTORY_KEY = 'devisflash_history';
   const [history, setHistory] = React.useState(() => {
@@ -9965,11 +10041,13 @@ function QuoteGenerator({ open, onClose }) {
         <div className="qg-header-row">
           <div>
             <div className="qg-title">
-              {mode === 'conseil' ? 'Demander conseil à l\'IA' : 'Générer un devis'}
+              {mode === 'conseil' ? 'Demander conseil à l\'IA' : mode === 'plan' ? 'Métré sur plan' : 'Générer un devis'}
             </div>
             <p className="qg-sub">
               {mode === 'conseil'
                 ? 'Décris ton problème (et ajoute une photo si possible). L\'IA te donne un diagnostic + solutions étapes par étapes.'
+                : mode === 'plan'
+                ? 'Photographie un plan : l\'IA lit les pièces, calcule les m² manquants depuis les cotes, et injecte le tout dans ton devis.'
                 : 'Décris ton chantier en quelques phrases (à l\'écrit ou en dictant). L\'IA génère un devis complet en ~30 secondes avec liste anti-oubli.'}
               {draftStatus !== 'idle' && (
                 <span className={`qg-draft-status qg-draft-${draftStatus}`}>
@@ -10002,9 +10080,14 @@ function QuoteGenerator({ open, onClose }) {
             Demander conseil
             <span className="qg-mode-tab-sub">Photo + question → diagnostic IA</span>
           </button>
+          <button type="button" className={`qg-mode-tab ${mode === 'plan' ? 'active' : ''}`} onClick={() => setMode('plan')} title="Photographier un plan : l'IA lit les pièces et calcule les m²">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+            Métré sur plan
+            <span className="qg-mode-tab-sub">Photo du plan → m² par pièce</span>
+          </button>
         </div>
 
-        {mode !== 'conseil' && !artisan.entreprise && !client.nom && !lignes.trim() && (
+        {mode !== 'conseil' && mode !== 'plan' && !artisan.entreprise && !client.nom && !lignes.trim() && (
           <div className="qg-onboarding-banner">
             <div className="qg-onboarding-icon">👋</div>
             <div className="qg-onboarding-text">
@@ -10018,7 +10101,8 @@ function QuoteGenerator({ open, onClose }) {
           </div>
         )}
 
-        {mode !== 'conseil' && (
+        {/* Fiche artisan / client / projet : inutile en mode conseil et en mode métré */}
+        {mode !== 'conseil' && mode !== 'plan' && (
         <React.Fragment>
         {showCompanySearch && (
         <div className="qg-section qg-company-search">
@@ -10312,6 +10396,116 @@ function QuoteGenerator({ open, onClose }) {
           </React.Fragment>
         )}
 
+        {mode === 'plan' && (
+          <React.Fragment>
+            <div className="qg-section">
+              <div className="qg-section-h">— Photo(s) du plan *</div>
+              <p style={{fontSize:12.5, color:'var(--t2-light)', margin:'0 0 12px', lineHeight:1.5}}>
+                Prends le plan en photo (ou importe un scan). L'IA lit les pièces, recopie les surfaces écrites
+                et <strong>calcule celles qui manquent</strong> à partir des cotes. Max 4 photos (plusieurs niveaux OK).
+              </p>
+              <div className="qg-photo-grid">
+                {planPhotos.map((p, i) => (
+                  <div key={i} className="qg-photo-thumb">
+                    <img src={p.dataUrl} alt={`Plan ${i+1}`}/>
+                    <button type="button" className="qg-photo-remove" onClick={() => removePhoto(setPlanPhotos, i)} aria-label="Supprimer">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                ))}
+                {planPhotos.length < 4 && (
+                  <React.Fragment>
+                    <button type="button" className="qg-photo-add" onClick={() => openCamera(setPlanPhotos)} title="Prendre le plan en photo">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      <span>Photo</span>
+                    </button>
+                    <label className="qg-photo-add" title="Choisir depuis la galerie">
+                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e => { addPhotos(e.target.files, setPlanPhotos); e.target.value=''; }} data-testid="plan-file-input"/>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      <span>Galerie</span>
+                    </label>
+                  </React.Fragment>
+                )}
+              </div>
+              {planError && (
+                <div className="qg-error" style={{marginTop:10}}>{planError}</div>
+              )}
+            </div>
+
+            <div className="qg-actions" style={{marginBottom: planResult ? 24 : 0}}>
+              <button className="btn btn-solid-dark" onClick={generatePlan} disabled={planLoading}>
+                {planLoading ? (
+                  <React.Fragment><span className="qg-spinner"/> Lecture du plan…</React.Fragment>
+                ) : (
+                  <React.Fragment>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6, verticalAlign:'-2px'}}><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+                    Calculer les m²
+                  </React.Fragment>
+                )}
+              </button>
+              <button className="btn btn-link" onClick={() => { setPlanPhotos([]); setPlanResult(null); setPlanError(''); }}>
+                Effacer
+              </button>
+            </div>
+
+            {planResult && (
+              <div className="qg-conseil-result" data-testid="plan-result">
+                <div className="qg-conseil-block">
+                  <div className="qg-conseil-block-title">📐 Métré relevé sur le plan</div>
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:13.5}}>
+                      <thead>
+                        <tr style={{textAlign:'left', borderBottom:'2px solid var(--line, #ddd)'}}>
+                          <th style={{padding:'8px 10px'}}>Pièce</th>
+                          <th style={{padding:'8px 10px', textAlign:'right'}}>Surface</th>
+                          <th style={{padding:'8px 10px'}}>Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {planResult.pieces.map((p, i) => (
+                          <tr key={i} style={{borderBottom:'1px solid var(--line, #eee)'}}>
+                            <td style={{padding:'7px 10px', fontWeight:600}}>{p.nom}</td>
+                            <td style={{padding:'7px 10px', textAlign:'right', fontVariantNumeric:'tabular-nums'}}>
+                              {p.surface_m2 != null ? `${String(p.surface_m2).replace('.', ',')} m²` : '—'}
+                            </td>
+                            <td style={{padding:'7px 10px', fontSize:12.5, color:'var(--t2-light)'}}>
+                              {p.source === 'calculée'
+                                ? <span title={p.calcul || ''}>🧮 calculée{p.calcul ? ` (${p.calcul})` : ''}</span>
+                                : p.source === 'imprimée' ? '📄 lue sur le plan' : '❓ à vérifier'}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td style={{padding:'9px 10px', fontWeight:700}}>TOTAL</td>
+                          <td style={{padding:'9px 10px', textAlign:'right', fontWeight:700, fontVariantNumeric:'tabular-nums'}}>
+                            {planResult.total_m2 != null ? `${String(planResult.total_m2).replace('.', ',')} m²` : '—'}
+                          </td>
+                          <td/>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {planResult.remarques && (
+                    <p style={{fontSize:12.5, color:'var(--t2-light)', margin:'10px 0 0', lineHeight:1.5}}>💬 {planResult.remarques}</p>
+                  )}
+                  <p style={{fontSize:12, color:'var(--t2-light)', margin:'8px 0 0'}}>
+                    ⚠️ Vérifie toujours les surfaces avant d'envoyer un devis — l'IA lit le plan, elle ne remplace pas ton mètre.
+                  </p>
+                </div>
+                <div className="qg-actions" style={{marginTop:14}}>
+                  <button className="btn btn-solid-dark" onClick={addPlanToDevis}>
+                    Ajouter au devis →
+                  </button>
+                </div>
+              </div>
+            )}
+          </React.Fragment>
+        )}
+
         {mode === 'conseil' && (
           <React.Fragment>
             <div className="qg-section">
@@ -10460,7 +10654,7 @@ function QuoteGenerator({ open, onClose }) {
           </React.Fragment>
         )}
 
-        {mode !== 'conseil' && errors.length > 0 && (() => {
+        {mode !== 'conseil' && mode !== 'plan' && errors.length > 0 && (() => {
           const isMissingFields = errors.every(e => e.line === '—');
           return (
           <div className="qg-error">
@@ -10481,7 +10675,7 @@ function QuoteGenerator({ open, onClose }) {
           );
         })()}
 
-        {mode !== 'conseil' && (
+        {mode !== 'conseil' && mode !== 'plan' && (
         <div className="qg-actions">
           {mode === 'rapide' && (
             <button className="btn btn-solid-dark" onClick={generate}>Générer le devis</button>
