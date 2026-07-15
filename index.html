@@ -4473,6 +4473,36 @@ body.df-trial-active { padding-top: 52px; }
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
+/* Champs étiquetés de l'onglet Devis & factures (lisibilité artisan) */
+.af-field-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+}
+.af-field-labeled { display: flex; flex-direction: column; gap: 6px; }
+.af-field-label { font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.af-field-inline {
+  display: flex; align-items: center; gap: 0;
+  border: 1px solid var(--hair-light); border-radius: 6px; overflow: hidden;
+  background: var(--paper);
+}
+.af-field-inline:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(224,78,26,.12); }
+.af-field-inline input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  padding: 11px 12px; font-family: inherit; font-size: 15px; color: var(--ink);
+}
+.af-field-unit {
+  padding: 0 12px; font-size: 13px; color: var(--t2-light);
+  background: var(--paper-2); align-self: stretch; display: flex; align-items: center;
+  border-left: 1px solid var(--hair-light); white-space: nowrap;
+}
+.af-field-hint { font-size: 12px; color: var(--t2-light); line-height: 1.4; }
+.af-field-textarea {
+  width: 100%; min-height: 84px; padding: 11px 12px; border: 1px solid var(--hair-light);
+  border-radius: 6px; background: var(--paper); font-family: inherit; font-size: 14px;
+  color: var(--ink); outline: none; resize: vertical;
+}
+.af-field-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(224,78,26,.12); }
+
 /* Cartes de style de devis (onglet Style de Mon compte) */
 .af-tpl-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -8846,7 +8876,10 @@ function buildQuoteMarkdown(artisan, client, projet, parsedLines) {
   const tvaRate = parseFloat(projet.tva) / 100;
   const tva = Math.round(totalHT * tvaRate * 100) / 100;
   const ttc = Math.round((totalHT + tva) * 100) / 100;
-  const acompte = Math.round(ttc * 30) / 100;
+  // Acompte : taux par défaut réglé dans Mon compte (sinon 30 %).
+  let acomptePctManuel = 30;
+  try { acomptePctManuel = parseFloat(localStorage.getItem('devisFlash_acompteDefaut')) || 30; } catch (e) {}
+  const acompte = Math.round(ttc * acomptePctManuel) / 100;
 
   let md = '';
   if (artisan.logo) md += `<img src="${artisan.logo}" alt="Logo" class="qg-devis-logo"/>\n\n`;
@@ -8973,7 +9006,7 @@ function buildQuoteMarkdown(artisan, client, projet, parsedLines) {
   // Mentions légales obligatoires
   md += `**Mentions légales**\n\n`;
   md += `- Validité du devis : 1 mois à compter de l'émission.\n`;
-  md += `- Acompte de 30 % à la signature (${fmtEUR(tvaNonApplicable ? Math.round(totalHT * 30) / 100 : acompte)}), solde à la fin des travaux.\n`;
+  md += `- Acompte de ${acomptePctManuel} % à la signature (${fmtEUR(tvaNonApplicable ? Math.round(totalHT * acomptePctManuel) / 100 : acompte)}), solde à la fin des travaux.\n`;
   if (tvaNonApplicable) md += `- TVA non applicable, art. 293 B du CGI (franchise en base de TVA — micro-entrepreneur / auto-entrepreneur).\n`;
   if (projet.tva === '10') md += `- TVA à 10 % au titre de l'article 279-0 bis du CGI (logement achevé depuis plus de 2 ans, affecté à l'habitation — attestation client requise).\n`;
   if (projet.tva === '5.5') md += `- TVA à 5,5 % au titre de l'article 278-0 bis A du CGI (travaux d'amélioration énergétique).\n`;
@@ -9531,8 +9564,14 @@ function QuoteGenerator({ open, onClose }) {
     };
   };
   const [expertCtx, setExpertCtx] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('devisflash_expert_ctx') || '{}'); }
-    catch { return {}; }
+    let ctx = {};
+    try { ctx = JSON.parse(localStorage.getItem('devisflash_expert_ctx') || '{}'); } catch { ctx = {}; }
+    // Taux horaire par défaut réglé dans Mon compte → plus besoin de le retaper.
+    if (!ctx.tauxHoraire) {
+      const th = localStorage.getItem('devisFlash_tauxHoraireDefaut');
+      if (th) ctx.tauxHoraire = th;
+    }
+    return ctx;
   });
   const [expertDictee, setExpertDictee] = React.useState('');
   const [expertPhotos, setExpertPhotos] = React.useState([]); // [{ dataUrl, base64, mimeType }]
@@ -10791,7 +10830,8 @@ function QuoteGenerator({ open, onClose }) {
           const tvaNA = (projet.tva === '0' || projet.tva === 0);
           const finalTotal = tvaNA ? totals.totalHT : totals.ttc;
           const iaAcomptePct = expertResult.acompte_recommande?.pourcentage;
-          const acomptePct = acompteOverride != null ? acompteOverride : (Number.isFinite(parseFloat(iaAcomptePct)) ? parseFloat(iaAcomptePct) : 30);
+          const acompteDefaut = parseFloat(localStorage.getItem('devisFlash_acompteDefaut')) || 30;
+          const acomptePct = acompteOverride != null ? acompteOverride : (Number.isFinite(parseFloat(iaAcomptePct)) ? parseFloat(iaAcomptePct) : acompteDefaut);
           const acompteMontant = Math.round(finalTotal * acomptePct) / 100;
           const a = expertResult.analyse_ia || {};
           const variantData = expertResult[expertVariant === 'standard' ? 'devis_variante_standard' : 'devis_variante_premium'] || {};
@@ -12479,6 +12519,9 @@ function AccountModal({ open, onClose }) {
       numeroDecennale:   user.numeroDecennale   || '',
       validiteDevisJours: user.validiteDevisJours || 90,
       noteFinDevis: user.noteFinDevis || '',
+      // Réglages locaux (pas en base) : acompte et taux horaire par défaut.
+      acompteDefaut: (() => { try { return localStorage.getItem('devisFlash_acompteDefaut') || '30'; } catch (e) { return '30'; } })(),
+      tauxHoraireDefaut: (() => { try { return localStorage.getItem('devisFlash_tauxHoraireDefaut') || ''; } catch (e) { return ''; } })(),
     });
   }, [user, open]);
   if (!open || !user) return null;
@@ -12726,25 +12769,53 @@ function AccountModal({ open, onClose }) {
           <div style={{display: activeTab === 'defaults' ? 'block' : 'none'}}>
           <div className="af-section-divider" style={{marginTop:0}}>
             <span>📄 Préférences devis</span>
-            <small>Réglages par défaut pour tes nouveaux devis</small>
+            <small>Ces réglages s'appliquent automatiquement à tous tes nouveaux devis. Tu peux toujours les ajuster au cas par cas au moment de faire un devis.</small>
           </div>
 
-          <div className="af-row-2">
-            <div className="af-input-group">
-              <input type="number" min="1" max="365" placeholder="Validité (jours)" style={{paddingLeft:14}} value={form.validiteDevisJours} onChange={(e) => setForm({...form, validiteDevisJours: e.target.value})}/>
+          <div className="af-field-grid">
+            <div className="af-field-labeled">
+              <label className="af-field-label">Validité du devis</label>
+              <div className="af-field-inline">
+                <input type="number" min="1" max="365" value={form.validiteDevisJours} onChange={(e) => setForm({...form, validiteDevisJours: e.target.value})}/>
+                <span className="af-field-unit">jours</span>
+              </div>
+              <span className="af-field-hint">Combien de temps ton prix reste valable (30 jours conseillé).</span>
             </div>
-            <div style={{display:'flex', alignItems:'center', fontSize:12.5, color:'var(--t3-light)'}}>
-              <span style={{paddingLeft:8}}>Durée par défaut affichée sur le devis</span>
+
+            <div className="af-field-labeled">
+              <label className="af-field-label">Acompte à la signature</label>
+              <div className="af-field-inline">
+                <input type="number" min="0" max="100" value={form.acompteDefaut}
+                  onChange={(e) => { const v = e.target.value; setForm({...form, acompteDefaut: v}); try { localStorage.setItem('devisFlash_acompteDefaut', String(parseFloat(v) || 30)); } catch(x){} }}/>
+                <span className="af-field-unit">%</span>
+              </div>
+              <span className="af-field-hint">Ce que le client verse pour lancer le chantier (30 à 40 % courant).</span>
+            </div>
+
+            <div className="af-field-labeled">
+              <label className="af-field-label">Ton taux horaire</label>
+              <div className="af-field-inline">
+                <input type="number" min="0" value={form.tauxHoraireDefaut}
+                  onChange={(e) => { const v = e.target.value; setForm({...form, tauxHoraireDefaut: v}); try { localStorage.setItem('devisFlash_tauxHoraireDefaut', String(parseFloat(v) || '')); } catch(x){} }}/>
+                <span className="af-field-unit">€/h HT</span>
+              </div>
+              <span className="af-field-hint">Utilisé par l'IA pour chiffrer la main d'œuvre (50 €/h par défaut).</span>
             </div>
           </div>
 
-          <div className="af-input-group" style={{height:'auto'}}>
+          <div className="af-field-labeled" style={{marginTop:20}}>
+            <label className="af-field-label">Note en bas de tes devis</label>
             <textarea
-              placeholder="Note ajoutée en fin de devis (ex: 'Le montant peut être révisé selon le temps passé sur chantier.')"
-              style={{paddingLeft:14, minHeight:80, paddingTop:12, paddingBottom:12, width:'100%', border:0, background:'transparent', fontFamily:'inherit', fontSize:14, color:'var(--ink)', outline:'none', resize:'vertical'}}
+              className="af-field-textarea"
+              placeholder="Ex : Le prix peut être ajusté selon le temps réellement passé sur le chantier. Merci de votre confiance."
               value={form.noteFinDevis}
               onChange={(e) => setForm({...form, noteFinDevis: e.target.value})}/>
+            <span className="af-field-hint">Ce texte apparaîtra en bas de chaque devis envoyé au client.</span>
           </div>
+
+          <p style={{fontSize:12.5, color:'var(--t2-light)', marginTop:16}}>
+            💡 L'acompte et le taux horaire sont enregistrés dès que tu les modifies. Clique « Enregistrer » ci-dessous pour la validité et la note.
+          </p>
 
           </div>
 
