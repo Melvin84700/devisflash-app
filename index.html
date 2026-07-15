@@ -7244,7 +7244,8 @@ Taux de TVA configuré par l'artisan : ${ctx.tva || 10}%
 
 <contexte_client>
 Nom du client (à utiliser dans message_client) : ${ctx.client_nom || 'le client'}
-${ctx.client_ville ? `Ville : ${ctx.client_ville}` : ''}
+${ctx.client_ville ? `Lieu du chantier : ${ctx.client_ville}
+PRIX LOCAUX : adapte tes prix au marché de cette zone. Île-de-France / grandes métropoles (Paris, Lyon, Nice…) : +15 à +30 % vs moyenne nationale. Zones rurales / petites villes : -10 à -20 %. Mentionne l'ajustement régional dans hypotheses.` : `Lieu du chantier : non précisé → prix moyenne nationale France, et ajoute dans points_a_confirmer que les prix seront affinés selon la localisation du chantier.`}
 ${ctx.projet_titre ? `Objet du devis : ${ctx.projet_titre}` : ''}
 IMPORTANT : utilise ce nom de client EXACTEMENT dans le message_client, PAS celui qui apparaît dans la dictée si différent.
 </contexte_client>
@@ -9912,7 +9913,9 @@ function QuoteGenerator({ open, onClose }) {
         marge: parseFloat(expertCtx.marge) || 30,
         tva: projet.tva || 10,
         client_nom: client.nom,
-        client_ville: (client.adresseFact || '').split(',').slice(-1)[0].trim(),
+        // Ville du CHANTIER en priorité (c'est là que les prix s'appliquent),
+        // sinon l'adresse de facturation.
+        client_ville: ((client.adresseChantier || client.adresseFact || '').split(',').slice(-1)[0] || '').trim(),
         projet_titre: projet.titre || '',
       };
       const result = await callGeminiExpert(ctx, expertDictee, expertPhotos);
