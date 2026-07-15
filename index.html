@@ -921,7 +921,8 @@ body.df-trial-active { padding-top: 52px; }
 
 /* ============ TOAST (notifications non-intrusives) ============ */
 .qg-toast {
-  position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+  /* En bas de l'écran : près du pouce sur mobile, et jamais caché par l'en-tête */
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
   z-index: 100000;
   display: flex; align-items: center; gap: 10px;
   padding: 14px 22px;
@@ -935,11 +936,11 @@ body.df-trial-active { padding-top: 52px; }
   animation: qg-toast-in 0.4s cubic-bezier(.22,1,.36,1), qg-toast-out 0.4s ease-in 2.8s forwards;
 }
 @keyframes qg-toast-in {
-  from { opacity: 0; transform: translate(-50%, -20px) scale(.9); }
+  from { opacity: 0; transform: translate(-50%, 20px) scale(.9); }
   to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 @keyframes qg-toast-out {
-  to { opacity: 0; transform: translate(-50%, -20px) scale(.95); }
+  to { opacity: 0; transform: translate(-50%, 20px) scale(.95); }
 }
 .qg-toast-icon {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1244,6 +1245,26 @@ body.df-trial-active { padding-top: 52px; }
   padding: 12px 14px;
   margin-bottom: 10px;
 }
+/* En-tête cliquable des blocs repliables */
+.qg-ia-block-head {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; user-select: none;
+}
+.qg-ia-block-head input[type="checkbox"] {
+  width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+}
+.qg-ia-block-titre { flex: 1; font-size: 13.5px; line-height: 1.35; }
+.qg-ia-block-titre b { color: #78350F; }
+.qg-ia-note { color: #A16207; font-size: 12px; }
+.qg-ia-count {
+  flex-shrink: 0; min-width: 22px; height: 22px; padding: 0 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #FEF3C7; border: 1px solid #F5D78A; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; color: #92400E;
+}
+.qg-ia-chevron { flex-shrink: 0; color: #A16207; font-size: 13px; transition: transform .2s; }
+.qg-ia-chevron.open { transform: rotate(180deg); }
+.qg-ia-block-body { margin-top: 10px; }
 .qg-ia-block:last-child { margin-bottom: 0; }
 .qg-ia-block-artisan {
   background: #FFFBEB;
@@ -9353,6 +9374,28 @@ function QuoteGenerator({ open, onClose }) {
   });
 
   // Toggles d'inclusion des blocs IA dans le devis final visible client
+  // Panneau d'analyse : blocs repliés par défaut (le panneau prenait tout
+  // l'écran et il fallait défiler longtemps pour atteindre le devis).
+  const [openIaBlocks, setOpenIaBlocks] = React.useState({});
+  const IaBlock = ({ id, title, note, count, checked, onCheck, artisanOnly, defaultOpen, children }) => {
+    const open = openIaBlocks[id] !== undefined ? openIaBlocks[id] : !!defaultOpen;
+    return (
+      <div className={'qg-ia-block' + (artisanOnly ? ' qg-ia-block-artisan' : '')}>
+        <div className="qg-ia-block-head" role="button" tabIndex={0}
+             onClick={() => setOpenIaBlocks(s => ({ ...s, [id]: !open }))}
+             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenIaBlocks(s => ({ ...s, [id]: !open })); } }}>
+          {onCheck != null && (
+            <input type="checkbox" checked={!!checked} title="Cocher = visible par le client sur le devis"
+                   onClick={e => e.stopPropagation()} onChange={e => onCheck(e.target.checked)}/>
+          )}
+          <span className="qg-ia-block-titre"><b>{title}</b>{note ? <span className="qg-ia-note"> · {note}</span> : null}</span>
+          {Number.isFinite(count) && count > 0 && <span className="qg-ia-count">{count}</span>}
+          <span className={'qg-ia-chevron' + (open ? ' open' : '')}>▾</span>
+        </div>
+        {open && <div className="qg-ia-block-body">{children}</div>}
+      </div>
+    );
+  };
   const [insightSettings, setInsightSettings] = React.useState({
     argumentaire: true,           // Premium : argumentaire de vente
     hypotheses: false,
@@ -10035,11 +10078,16 @@ function QuoteGenerator({ open, onClose }) {
 
   return (
     <div className="qg-overlay" onClick={(e) => { if (e.target.classList.contains('qg-overlay')) onClose(); }}>
-      {toast && (
+      {/* Portail vers <body> : l'overlay défile et la modale a un transform (animation),
+          ce qui « piégeait » le position:fixed → le toast s'affichait tout en haut de la
+          modale, invisible quand on avait défilé. Via le portail, il est VRAIMENT fixé
+          à l'écran, visible où qu'on soit. */}
+      {toast && ReactDOM.createPortal(
         <div className={`qg-toast qg-toast-${toast.type}`} role="status">
           <span className="qg-toast-icon">{toast.type === 'success' ? '✓' : toast.type === 'error' ? '⚠' : 'ℹ'}</span>
           <span className="qg-toast-msg">{toast.msg}</span>
-        </div>
+        </div>,
+        document.body
       )}
       <div className="qg-modal">
         <button className="qg-close" onClick={onClose} aria-label="Fermer">✕</button>
@@ -10733,90 +10781,77 @@ function QuoteGenerator({ open, onClose }) {
               <div className="qg-ia-panel">
                 <div className="qg-ia-panel-head">
                   <div>
-                    <div className="qg-ia-panel-title">🤖 Analyse IA — anti-oubli</div>
-                    <p className="qg-ia-panel-sub">L'IA a réfléchi à ton chantier et listé les points importants. <b>Coche</b> ceux que tu veux faire apparaître dans le devis envoyé au client. Les autres restent visibles ici pour ton info.</p>
+                    <div className="qg-ia-panel-title">🤖 Analyse IA — zéro oubli, zéro perte</div>
+                    <p className="qg-ia-panel-sub">L'IA a vérifié ton chantier : ce qui manque, ce qui est risqué, ce qui protège ta marge. Clique un bloc pour l'ouvrir. <b>Coche</b> ceux que le client doit voir sur le devis.</p>
                   </div>
-                  {Number.isFinite(conf) && conf > 0 && (
-                    <div className="qg-confidence-badge" style={{borderColor:confColor, color:confColor}}>
-                      <b>Confiance {conf}%</b>
-                    </div>
-                  )}
+                  <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8, flexShrink:0}}>
+                    {Number.isFinite(conf) && conf > 0 && (
+                      <div className="qg-confidence-badge" style={{borderColor:confColor, color:confColor}}>
+                        <b>Confiance {conf}%</b>
+                      </div>
+                    )}
+                    <button type="button" className="qg-history-btn" onClick={() => {
+                      const el = document.querySelector('.qg-devis-clean');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}>Voir le devis ↓</button>
+                  </div>
                 </div>
 
-                {/* Blocs toggleable (visible client si coché) */}
+                {/* Blocs repliables. Coche = visible par le client sur le devis. */}
                 {expertVariant === 'premium' && variantData.argumentaire_client && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.argumentaire} onChange={e => setInsightSettings(s => ({...s, argumentaire: e.target.checked}))}/>
-                      <span><b>Argumentaire Premium</b> — affiché au client</span>
-                    </label>
+                  <IaBlock id="argumentaire" title="Argumentaire Premium" note="visible client si coché"
+                           checked={insightSettings.argumentaire} onCheck={v => setInsightSettings(s => ({...s, argumentaire: v}))}>
                     <div className="qg-ia-block-content">{variantData.argumentaire_client}</div>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(a.avertissements_techniques) && a.avertissements_techniques.length > 0 && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.avertissements} onChange={e => setInsightSettings(s => ({...s, avertissements: e.target.checked}))}/>
-                      <span><b>Avertissements techniques</b> — affiché au client si coché</span>
-                    </label>
+                  <IaBlock id="avert" title="Avertissements techniques" note="visible client si coché" count={a.avertissements_techniques.length}
+                           checked={insightSettings.avertissements} onCheck={v => setInsightSettings(s => ({...s, avertissements: v}))}>
                     <ul className="qg-ia-block-list">{a.avertissements_techniques.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(expertResult.hypotheses) && expertResult.hypotheses.length > 0 && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.hypotheses} onChange={e => setInsightSettings(s => ({...s, hypotheses: e.target.checked}))}/>
-                      <span><b>Hypothèses prises par l'IA</b> — affiché au client si coché</span>
-                    </label>
+                  <IaBlock id="hypo" title="Hypothèses prises par l'IA" note="visible client si coché" count={expertResult.hypotheses.length}
+                           checked={insightSettings.hypotheses} onCheck={v => setInsightSettings(s => ({...s, hypotheses: v}))}>
                     <ul className="qg-ia-block-list">{expertResult.hypotheses.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(expertResult.points_a_confirmer) && expertResult.points_a_confirmer.length > 0 && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.points_a_confirmer} onChange={e => setInsightSettings(s => ({...s, points_a_confirmer: e.target.checked}))}/>
-                      <span><b>À confirmer sur place</b> — affiché au client si coché</span>
-                    </label>
+                  <IaBlock id="confirmer" title="À confirmer sur place" note="visible client si coché" count={expertResult.points_a_confirmer.length}
+                           defaultOpen={expertResult.points_a_confirmer.some(x => String(x).indexOf('⚠️') === 0)}
+                           checked={insightSettings.points_a_confirmer} onCheck={v => setInsightSettings(s => ({...s, points_a_confirmer: v}))}>
                     <ul className="qg-ia-block-list">{expertResult.points_a_confirmer.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(a.facteurs_risque) && a.facteurs_risque.length > 0 && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.facteurs_risque} onChange={e => setInsightSettings(s => ({...s, facteurs_risque: e.target.checked}))}/>
-                      <span><b>Contraintes identifiées</b> — affiché au client si coché</span>
-                    </label>
+                  <IaBlock id="risques" title="Contraintes identifiées" note="visible client si coché" count={a.facteurs_risque.length}
+                           checked={insightSettings.facteurs_risque} onCheck={v => setInsightSettings(s => ({...s, facteurs_risque: v}))}>
                     <ul className="qg-ia-block-list">{a.facteurs_risque.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(a.postes_oublies_ajoutes) && a.postes_oublies_ajoutes.length > 0 && (
-                  <div className="qg-ia-block">
-                    <label className="qg-ia-block-toggle">
-                      <input type="checkbox" checked={insightSettings.postes_oublies} onChange={e => setInsightSettings(s => ({...s, postes_oublies: e.target.checked}))}/>
-                      <span><b>Postes ajoutés par l'IA</b> — déjà dans les lignes ; cocher pour les rappeler explicitement au client</span>
-                    </label>
+                  <IaBlock id="oublies" title="Postes ajoutés par l'IA" note="déjà dans les lignes du devis" count={a.postes_oublies_ajoutes.length}
+                           checked={insightSettings.postes_oublies} onCheck={v => setInsightSettings(s => ({...s, postes_oublies: v}))}>
                     <ul className="qg-ia-block-list">{a.postes_oublies_ajoutes.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {/* Blocs artisan only — JAMAIS affichés au client */}
                 {Array.isArray(a.alertes_rentabilite) && a.alertes_rentabilite.length > 0 && (
-                  <div className="qg-ia-block qg-ia-block-artisan">
-                    <div className="qg-ia-block-toggle-fake"><b>Alertes rentabilité</b> — info artisan uniquement</div>
+                  <IaBlock id="rentab" title="Alertes rentabilité" note="info artisan uniquement" count={a.alertes_rentabilite.length} artisanOnly>
                     <ul className="qg-ia-block-list">{a.alertes_rentabilite.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(a.alertes_litige) && a.alertes_litige.length > 0 && (
-                  <div className="qg-ia-block qg-ia-block-artisan">
-                    <div className="qg-ia-block-toggle-fake"><b>Alertes litige</b> — info artisan uniquement</div>
+                  <IaBlock id="litige" title="Alertes litige" note="info artisan uniquement" count={a.alertes_litige.length} artisanOnly>
                     <ul className="qg-ia-block-list">{a.alertes_litige.map((x,i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Number.isFinite(parseFloat(variantData.marge_estimee_pourcentage)) && (
@@ -10826,8 +10861,7 @@ function QuoteGenerator({ open, onClose }) {
                 )}
 
                 {expertResult.message_client && (expertResult.message_client.version_courte || expertResult.message_client.version_pro) && (
-                  <div className="qg-ia-block qg-ia-block-artisan">
-                    <div className="qg-ia-block-toggle-fake"><b>Message client prêt à envoyer</b> — info artisan, à copier-coller</div>
+                  <IaBlock id="msg" title="Message client prêt à envoyer" note="info artisan, à copier-coller" artisanOnly>
                     {expertResult.message_client.version_courte && (
                       <div className="qg-msg-template">
                         <div className="qg-msg-template-label">SMS (courte) :</div>
@@ -10842,18 +10876,17 @@ function QuoteGenerator({ open, onClose }) {
                         <button type="button" className="qg-copy-btn" onClick={() => { navigator.clipboard.writeText(expertResult.message_client.version_pro); }}>Copier</button>
                       </div>
                     )}
-                  </div>
+                  </IaBlock>
                 )}
 
                 {Array.isArray(expertResult.liste_courses_fournisseur) && expertResult.liste_courses_fournisseur.length > 0 && (
-                  <div className="qg-ia-block qg-ia-block-artisan">
-                    <div className="qg-ia-block-toggle-fake"><b>Liste de courses fournisseur</b> — info artisan, à emporter chez Cedeo/Point.P</div>
+                  <IaBlock id="courses" title="Liste de courses fournisseur" note="info artisan, à emporter en magasin" count={expertResult.liste_courses_fournisseur.length} artisanOnly>
                     <ul className="qg-ia-block-list">
                       {expertResult.liste_courses_fournisseur.map((item, i) => (
                         <li key={i}><b>{item.materiel || item.designation || 'Matériel'}</b> — {item.quantite_estimee || item.quantite || 'quantité à confirmer'}</li>
                       ))}
                     </ul>
-                  </div>
+                  </IaBlock>
                 )}
               </div>
 
