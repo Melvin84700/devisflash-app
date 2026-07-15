@@ -792,7 +792,38 @@ body.df-trial-active .nav-mobile-menu { top: 116px; }
   .qg-header-row { flex-direction: column; align-items: stretch; gap: 12px; }
   .qg-header-actions { flex-wrap: wrap; }
   .qg-title { font-size: 26px; }
+  /* Lisibilité 40+ ans : libellés plus grands, et champs à 16px minimum
+     (en dessous, iPhone zoome automatiquement sur le champ au focus). */
+  .qg-label { font-size: 13.5px; }
+  .qg-input, .qg-textarea, .qg-select { font-size: 16px; }
+  .qg-section-h { font-size: 14px; }
 }
+/* Panneau d'aide rapide (« Aide » dans l'en-tête du générateur) */
+.qg-help-panel {
+  background: var(--paper-2);
+  border: 1px solid var(--hair-light);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin: 4px 0 18px;
+  display: grid; gap: 14px;
+  animation: qg-fade .2s ease;
+}
+.qg-help-item b { display: block; font-size: 14px; margin-bottom: 4px; }
+.qg-help-item p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--t2-light); }
+@media (max-width: 640px) {
+  .qg-help-item p { font-size: 14.5px; }
+}
+
+/* Pastille d'étape devant les titres de sections du générateur :
+   l'artisan sait toujours où il en est (1 → 2 → 3 → générer). */
+.qg-step-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; margin-right: 9px;
+  background: var(--accent); color: #fff;
+  border-radius: 999px; font-size: 12px; font-weight: 700;
+  flex-shrink: 0; vertical-align: middle;
+}
+.qg-section-h { display: flex; align-items: center; }
 /* Focus clavier visible sur les champs (accessibilité) */
 .qg-input:focus-visible, .qg-textarea:focus-visible, .qg-select:focus-visible {
   outline: 2px solid var(--accent);
@@ -9999,6 +10030,7 @@ function QuoteGenerator({ open, onClose }) {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
   });
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false); // panneau d'aide rapide « ? »
 
   const persistHistory = (next) => {
     setHistory(next);
@@ -10243,8 +10275,33 @@ function QuoteGenerator({ open, onClose }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
               Mes devis {history.length > 0 && <span className="qg-history-badge">{history.length}</span>}
             </button>
+            <button type="button" className="qg-history-btn qg-help-btn" onClick={() => setHelpOpen(o => !o)} title="Aide rapide" aria-expanded={helpOpen}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>
+              Aide
+            </button>
           </div>
         </div>
+
+        {helpOpen && (
+          <div className="qg-help-panel">
+            <div className="qg-help-item">
+              <b>🎤 Comment dicter mon chantier ?</b>
+              <p>Clique sur « Dicter » et parle comme au téléphone : « 12 prises, un tableau neuf, appartement de 1970… ». Plus tu donnes de détails (surfaces, marques, état), meilleur est le devis. La dictée marche sur Chrome et Edge — sinon, tape ta description au clavier, ça marche pareil.</p>
+            </div>
+            <div className="qg-help-item">
+              <b>💾 Où sont mes devis ?</b>
+              <p>Après une génération, clique « Sauvegarder ». Tu retrouves tout dans « Mes devis », en haut de cette fenêtre.</p>
+            </div>
+            <div className="qg-help-item">
+              <b>✏️ Je peux modifier le devis ?</b>
+              <p>Oui : chaque ligne se modifie directement dans le tableau (quantité, prix, texte). Les totaux et la TVA se recalculent tout seuls.</p>
+            </div>
+            <div className="qg-help-item">
+              <b>📤 Comment l'envoyer au client ?</b>
+              <p>Bouton « Imprimer / PDF » au-dessus du devis. Et dans l'analyse IA, un message SMS ou email prêt à copier-coller accompagne ton devis.</p>
+            </div>
+          </div>
+        )}
 
         {/* 2 modes visibles directement — pas de toggle, plus simple à comprendre */}
         <div className="qg-mode-tabs">
@@ -10335,7 +10392,7 @@ function QuoteGenerator({ open, onClose }) {
         )}
 
         <div className="qg-section">
-          <div className="qg-section-h">— Artisan <span style={{fontSize:11, fontWeight:400, color:'var(--t3-light)'}}>· rempli une fois = gardé pour tes prochains devis</span></div>
+          <div className="qg-section-h"><span className="qg-step-n">1</span>Toi, l'artisan <span style={{fontSize:11, fontWeight:400, color:'var(--t3-light)'}}>· rempli une fois = gardé pour tes prochains devis</span></div>
           <div className="qg-grid">
             <div className="qg-field">
               <label className="qg-label">Entreprise *</label>
@@ -10393,7 +10450,7 @@ function QuoteGenerator({ open, onClose }) {
         </div>
 
         <div className="qg-section">
-          <div className="qg-section-h">— Client</div>
+          <div className="qg-section-h"><span className="qg-step-n">2</span>Ton client</div>
           <div className="qg-grid">
             <div className="qg-field full"><label className="qg-label">Nom *</label><input className="qg-input" value={client.nom} onChange={e => setClient({...client, nom:e.target.value})} placeholder="Ex : M. Julien Renard — ou SARL Martin"/></div>
             <div className="qg-field full"><label className="qg-label">Adresse de facturation</label><input className="qg-input" value={client.adresseFact} onChange={e => setClient({...client, adresseFact:e.target.value})} placeholder="45 avenue de Paris, 33700 Mérignac"/></div>
@@ -10402,7 +10459,7 @@ function QuoteGenerator({ open, onClose }) {
         </div>
 
         <div className="qg-section">
-          <div className="qg-section-h">— Projet</div>
+          <div className="qg-section-h"><span className="qg-step-n">3</span>Le projet</div>
           <div className="qg-grid">
             <div className="qg-field full"><label className="qg-label">Titre du devis</label><input className="qg-input" value={projet.titre} onChange={e => setProjet({...projet, titre:e.target.value})} placeholder="Ex : Rénovation salle de bain T3"/></div>
             <div className="qg-field">
@@ -10461,7 +10518,7 @@ function QuoteGenerator({ open, onClose }) {
         {mode === 'rapide' && (
           <div className="qg-section">
             <div className="qg-section-h-row">
-              <div className="qg-section-h">— Lignes de travaux *</div>
+              <div className="qg-section-h"><span className="qg-step-n">4</span>Lignes de travaux *</div>
               <button
                 type="button"
                 className={`qg-voice-btn ${isRecording ? 'recording' : ''}`}
@@ -10484,7 +10541,7 @@ function QuoteGenerator({ open, onClose }) {
         {mode === 'expert' && (
           <React.Fragment>
             <div className="qg-section">
-              <div className="qg-section-h">— Ton métier</div>
+              <div className="qg-section-h"><span className="qg-step-n">4</span>Ton métier</div>
               <div className="qg-grid">
                 <div className="qg-field full"><label className="qg-label">Métier</label><input className="qg-input" value={expertCtx.metier || ''} onChange={e => setExpertCtx({...expertCtx, metier:e.target.value})} placeholder="Électricien, Plombier, Maçon, Peintre…"/></div>
               </div>
@@ -10510,7 +10567,7 @@ function QuoteGenerator({ open, onClose }) {
 
             <div className="qg-section">
               <div className="qg-section-h-row">
-                <div className="qg-section-h">— Description du chantier *</div>
+                <div className="qg-section-h"><span className="qg-step-n">5</span>Décris ton chantier *</div>
                 <button
                   type="button"
                   className={`qg-voice-btn ${isRecording ? 'recording' : ''}`}
@@ -10536,7 +10593,7 @@ function QuoteGenerator({ open, onClose }) {
             </div>
 
             <div className="qg-section">
-              <div className="qg-section-h">— Photos du chantier (optionnel)</div>
+              <div className="qg-section-h"><span className="qg-step-n">+</span>Photos du chantier (optionnel)</div>
               <p style={{fontSize:12.5, color:'var(--t2-light)', margin:'0 0 12px', lineHeight:1.5}}>
                 L'IA va analyser les photos pour identifier matériaux, surfaces et contraintes. Max 6 photos.
               </p>
