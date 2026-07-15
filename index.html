@@ -7207,6 +7207,20 @@ function enforceMetierChecklist(result, metier, dictee) {
 // ─────────────────────────────────────────────────────────────────────
 function _r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
+// L'IA renvoie parfois les nombres en TEXTE français : "28,50", "1 120,00",
+// "65 €", "65€/m²". Number() les rejette (NaN) et le garde-fou les forçait à 0
+// en silence → l'artisan voyait des prix à 0 sans comprendre. Ce parseur les
+// convertit correctement avant tout contrôle.
+function parseNumIA(v) {
+  if (typeof v === 'number') return v;
+  if (v == null || v === '') return NaN;
+  let s = String(v)
+    .replace(/[€\s  ]/g, '')  // espaces (y c. insécables) et symbole €
+    .replace(/\/.*$/, '');              // suffixe d'unité éventuel : "65/m²"
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); // 1.120,50 → 1120.50
+  return Number(s);
+}
+
 function fixDevis(result) {
   const report = { corrections: [], blocages: [], warnings: [] };
   if (!result || typeof result !== 'object') {
@@ -7233,8 +7247,8 @@ function _fixVariant(variant, variantKey, report) {
       let totalSousPosteHT = 0;
       for (const l of sp.lignes) {
         if (!l || typeof l !== 'object') continue;
-        let qte = Number(l.quantite);
-        let pu = Number(l.prix_unitaire_ht);
+        let qte = parseNumIA(l.quantite);
+        let pu = parseNumIA(l.prix_unitaire_ht);
         // Blocage valeurs absurdes
         if (!Number.isFinite(qte) || qte < 0) {
           report.blocages.push('Ligne "' + String(l.designation || '').slice(0, 40) + '" : quantité invalide (' + l.quantite + ') → forcée à 0');
@@ -7255,7 +7269,7 @@ function _fixVariant(variant, variantKey, report) {
         l.quantite = qte;
         l.prix_unitaire_ht = pu;
         const totalLigne = _r2(qte * pu);
-        const totalDecl = Number(l.total_ht);
+        const totalDecl = parseNumIA(l.total_ht);
         if (Number.isFinite(totalDecl) && Math.abs(totalLigne - totalDecl) > 0.01) {
           report.corrections.push('Ligne "' + String(l.designation || '').slice(0, 40) + '" : ' + totalDecl + '€ → ' + totalLigne + '€');
         }
@@ -7263,7 +7277,7 @@ function _fixVariant(variant, variantKey, report) {
         totalSousPosteHT += totalLigne;
       }
       totalSousPosteHT = _r2(totalSousPosteHT);
-      const totalSPDecl = Number(sp.total_ht);
+      const totalSPDecl = parseNumIA(sp.total_ht);
       if (Number.isFinite(totalSPDecl) && Math.abs(totalSousPosteHT - totalSPDecl) > 0.01) {
         report.corrections.push('Sous-poste "' + String(sp.titre || '').slice(0, 40) + '" : ' + totalSPDecl + '€ → ' + totalSousPosteHT + '€');
       }
@@ -9675,6 +9689,12 @@ function QuoteGenerator({ open, onClose }) {
           }
           if (r.blocages.length > 0) {
             console.warn('[DevisFlash] Post-validator a bloqué ' + r.blocages.length + ' valeur(s) absurde(s) :', r.blocages);
+            // Visible pour l'artisan (panneau anti-oubli), pas seulement en console :
+            // un prix mis à 0 sans explication ressemble à un bug et fausse le devis.
+            if (!Array.isArray(result.points_a_confirmer)) result.points_a_confirmer = [];
+            for (const b of r.blocages.slice(0, 4)) {
+              result.points_a_confirmer.push('⚠️ Prix ou quantité illisible mis à 0 — à ressaisir : ' + b.split(' : ')[0].replace(/^Ligne /, ''));
+            }
           }
         }
       } catch (e) {
@@ -11035,7 +11055,7 @@ function QuoteGenerator({ open, onClose }) {
                           />
                         </td>
                         <td>
-                          <input type="number" step="0.01" className="qg-edit-input qg-edit-num" value={line.quantite} onChange={e => updateLine(expertVariant, line.id, { quantite: parseFloat(e.target.value) || 0 })}/>
+                          <input type="number" step="any" inputMode="decimal" className="qg-edit-input qg-edit-num" value={line.quantite} onChange={e => updateLine(expertVariant, line.id, { quantite: parseFloat(e.target.value) || 0 })}/>
                         </td>
                         <td>
                           <select className="qg-edit-input qg-edit-unit" value={UNIT_OPTIONS.includes(line.unite) ? line.unite : '__custom__'} onChange={e => {
@@ -11054,7 +11074,7 @@ function QuoteGenerator({ open, onClose }) {
                           </select>
                         </td>
                         <td>
-                          <input type="number" step="0.01" className="qg-edit-input qg-edit-num" value={line.prix_unitaire_ht} onChange={e => updateLine(expertVariant, line.id, { prix_unitaire_ht: parseFloat(e.target.value) || 0 })}/>
+                          <input type="number" step="any" inputMode="decimal" className="qg-edit-input qg-edit-num" value={line.prix_unitaire_ht} onChange={e => updateLine(expertVariant, line.id, { prix_unitaire_ht: parseFloat(e.target.value) || 0 })}/>
                         </td>
                         <td className="qg-edit-total">{(line.total_ht || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</td>
                         <td className="qg-edit-actions-col">
