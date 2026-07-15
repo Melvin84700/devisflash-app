@@ -4473,6 +4473,21 @@ body.df-trial-active { padding-top: 52px; }
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
+/* Cartes de style de devis (onglet Style de Mon compte) */
+.af-tpl-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px; margin-top: 4px;
+}
+.af-tpl-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 14px; background: var(--paper); border: 1.5px solid var(--hair-light);
+  border-radius: 6px; cursor: pointer; text-align: left; transition: border-color .15s, box-shadow .15s;
+}
+.af-tpl-card:hover { border-color: var(--ink); }
+.af-tpl-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(224,78,26,.15); }
+.af-tpl-swatch { width: 26px; height: 26px; border-radius: 6px; }
+.af-tpl-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+.af-tpl-desc { font-size: 12px; color: var(--t2-light); line-height: 1.4; }
 .af-color-swatch {
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -9527,6 +9542,12 @@ function QuoteGenerator({ open, onClose }) {
   const [expertVariant, setExpertVariant] = React.useState('standard');
   const [expertTemplate, setExpertTemplate] = React.useState(() => localStorage.getItem('devisflash_template') || 'classique');
   React.useEffect(() => { localStorage.setItem('devisflash_template', expertTemplate); }, [expertTemplate]);
+  // Suit le style par défaut choisi dans Mon compte → onglet Style (même session).
+  React.useEffect(() => {
+    const onTpl = (e) => { if (e?.detail) setExpertTemplate(e.detail); };
+    window.addEventListener('devisflash:set-template', onTpl);
+    return () => window.removeEventListener('devisflash:set-template', onTpl);
+  }, []);
   const [storeFinderOpen, setStoreFinderOpen] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState(null);
   const [geoStatus, setGeoStatus] = React.useState('idle'); // idle | locating | ready | error
@@ -12426,6 +12447,10 @@ function AccountModal({ open, onClose }) {
   const [saved, setSaved] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('headers');
+  // Style de devis par défaut — même clé que le générateur (devisflash_template)
+  const [defaultTemplate, setDefaultTemplate] = React.useState(() => {
+    try { return localStorage.getItem('devisflash_template') || 'classique'; } catch (e) { return 'classique'; }
+  });
   React.useEffect(() => {
     const onTabSwitch = (e) => setActiveTab(e?.detail || 'headers');
     window.addEventListener('devisflash:account-tab', onTabSwitch);
@@ -12664,108 +12689,37 @@ function AccountModal({ open, onClose }) {
           </div>
           </div>
 
-          {/* ═══ TAB : STYLE (couleur, densité) — Layout Tolteck avec aperçu PDF live ═══ */}
+          {/* ═══ TAB : STYLE — style de devis PAR DÉFAUT (les vrais styles du générateur,
+               même clé localStorage : devisflash_template). L'ancien onglet montrait des
+               couleurs/densités factices, jamais sauvegardées ni appliquées aux devis. ═══ */}
           <div style={{display: activeTab === 'style' ? 'block' : 'none'}}>
-          <div className="af-tab-layout af-tab-layout-wide">
             <div className="af-tab-form">
               <div className="af-section-divider" style={{marginTop:0}}>
-                <span>🎨 Couleur d'accent</span>
-                <small>Couleur principale utilisée sur tes devis</small>
+                <span>🎨 Style de devis par défaut</span>
+                <small>Le style appliqué à tes prochains devis — le même choix que dans le générateur, où tu peux toujours changer au cas par cas.</small>
               </div>
-              <div className="af-color-row">
+              <div className="af-tpl-grid">
                 {[
-                  { c: '#E04E1A', name: 'Orange' },
-                  { c: '#0A0A0A', name: 'Noir' },
-                  { c: '#1B5E20', name: 'Vert' },
-                  { c: '#1E3A5F', name: 'Bleu' },
-                  { c: '#7C2D2D', name: 'Bordeaux' },
-                  { c: '#7A6230', name: 'Or' }
-                ].map(p => (
-                  <button key={p.c} type="button" className={`af-color-swatch ${(form.accent || '#E04E1A') === p.c ? 'active' : ''}`} style={{background: p.c}} title={p.name} onClick={() => setForm({...form, accent: p.c})}/>
+                  { id: 'classique', label: 'Classique', swatch: '#0A0A0A', desc: 'Sobre, noir et blanc — passe partout' },
+                  { id: 'moderne',   label: 'Moderne',   swatch: '#06b6d4', desc: 'Bleu, épuré — clientèle urbaine' },
+                  { id: 'elegant',   label: 'Élégant',   swatch: '#b45309', desc: 'Ambre, raffiné — haut de gamme' },
+                  { id: 'nature',    label: 'Nature',    swatch: '#10b981', desc: 'Vert — rénovation énergétique' },
+                ].map(tpl => (
+                  <button key={tpl.id} type="button"
+                    className={`af-tpl-card ${defaultTemplate === tpl.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setDefaultTemplate(tpl.id);
+                      try { localStorage.setItem('devisflash_template', tpl.id); } catch(e) {}
+                      window.dispatchEvent(new CustomEvent('devisflash:set-template', { detail: tpl.id }));
+                    }}>
+                    <span className="af-tpl-swatch" style={{background: tpl.swatch}}/>
+                    <span className="af-tpl-name">{tpl.label}</span>
+                    <span className="af-tpl-desc">{tpl.desc}</span>
+                  </button>
                 ))}
               </div>
-
-              <div className="af-section-divider">
-                <span>🪶 Densité d'affichage</span>
-                <small>Espacement entre les sections de ton devis</small>
-              </div>
-              <div className="af-pills-row">
-                {[
-                  { v: 'aere', label: 'Aéré' },
-                  { v: 'standard', label: 'Standard' },
-                  { v: 'compact', label: 'Compact' }
-                ].map(p => (
-                  <button key={p.v} type="button" className={`af-pill ${(form.density || 'standard') === p.v ? 'active' : ''}`} onClick={() => setForm({...form, density: p.v})}>{p.label}</button>
-                ))}
-              </div>
+              <p style={{fontSize:12.5, color:'var(--t2-light)', marginTop:14}}>✓ Enregistré automatiquement dès le clic — pas besoin du bouton Enregistrer.</p>
             </div>
-
-            {/* ─── Aperçu PDF live du devis (style Tolteck) ─── */}
-            <div className="af-preview af-preview-pdf" data-density={form.density || 'standard'}>
-              <h4 className="af-preview-title">Aperçu de ton devis</h4>
-              <div className="af-pdf-mockup" style={{'--mock-accent': form.accent || '#E04E1A'}}>
-                <div className="mock-header">
-                  <div className="mock-header-left">
-                    <div className="mock-company">{form.company || 'DevisFlash'}</div>
-                    <div className="mock-meta">
-                      {(form.address && form.address.street) || '89 rue exemple'}<br/>
-                      {((form.address && form.address.postalCode) || '75001') + ' ' + ((form.address && form.address.city) || 'Paris')}<br/>
-                      {(form.address && form.address.country) || 'France'}<br/>
-                      {form.email || 'email@exemple.com'}
-                    </div>
-                  </div>
-                  <div className="mock-client-box">
-                    <div className="mock-line w-70"></div>
-                    <div className="mock-line w-50"></div>
-                    <div className="mock-line w-40"></div>
-                    <div className="mock-line w-60"></div>
-                  </div>
-                </div>
-
-                <div className="mock-devis-row">
-                  <div className="mock-devis-title">Devis n° DEV-2026-0024</div>
-                  <div className="mock-date">En date du 26/05/2026</div>
-                </div>
-                <div className="mock-validite">Valable 3 mois</div>
-
-                <div className="mock-projet-label">Adresse du projet :</div>
-                <div className="mock-projet-box">
-                  <div className="mock-line w-50"></div>
-                  <div className="mock-line w-40"></div>
-                  <div className="mock-line w-30"></div>
-                </div>
-
-                <table className="mock-table">
-                  <thead>
-                    <tr>
-                      <th style={{width: '8%'}}>N°</th>
-                      <th>Désignation</th>
-                      <th style={{width: '12%'}}>Qté</th>
-                      <th style={{width: '15%'}}>P.U.</th>
-                      <th style={{width: '15%'}}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr><td>1</td><td>Démolition + évacuation</td><td>1</td><td>680 €</td><td>680 €</td></tr>
-                    <tr><td>2</td><td>Plomberie + équipements</td><td>1</td><td>3 420 €</td><td>3 420 €</td></tr>
-                    <tr><td>3</td><td>Carrelage + peinture</td><td>1</td><td>1 920 €</td><td>1 920 €</td></tr>
-                  </tbody>
-                </table>
-
-                <div className="mock-totals">
-                  <div className="row"><span>Sous-total HT</span><span>6 020 €</span></div>
-                  <div className="row"><span>TVA 10 %</span><span>602 €</span></div>
-                  <div className="row total-row"><span>Total TTC</span><span>6 622 €</span></div>
-                </div>
-
-                <div className="mock-mention">Mentions légales — SIRET, RCS, TVA intracom, assurance décennale…</div>
-                <div className="mock-footer">
-                  {(form.company || 'DevisFlash')} — {((form.address && form.address.street) || '89 rue exemple')}, {((form.address && form.address.postalCode) || '75001')} {((form.address && form.address.city) || 'Paris')}<br/>
-                  e-mail : {form.email || 'email@exemple.com'}
-                </div>
-              </div>
-            </div>
-          </div>
           </div>
 
           {/* ═══ TAB : DEVIS & FACTURES ═══ */}
@@ -13377,20 +13331,9 @@ function App() {
       {user && !user.accessAllowed && (
         <TrialExpiredModal user={user} onLogout={() => window.DevisFlashAuth.logout()}/>
       )}
-      <TweaksPanel>
-        <TweakSection label="Direction artistique"/>
-        <TweakColor label="Accent" value={t.accent}
-          options={['#E04E1A', '#1B5E20', '#1E3A5F', '#7C2D2D']}
-          onChange={(v) => setTweak('accent', v)}/>
-        <TweakSection label="Densité éditoriale"/>
-        <TweakRadio label="Rythme" value={t.density}
-          options={[{value:'aere', label:'Aéré'},{value:'standard', label:'Standard'},{value:'compact', label:'Compact'}]}
-          onChange={(v) => setTweak('density', v)}/>
-        <TweakSection label="Voix typographique"/>
-        <TweakRadio label="Display" value={t.voice}
-          options={[{value:'sans', label:'Sans'},{value:'serif', label:'Serif'},{value:'geometric', label:'Géo.'}]}
-          onChange={(v) => setTweak('voice', v)}/>
-      </TweaksPanel>
+      {/* TweaksPanel (outil de design DEV, accent/densité/typo du site) retiré du
+          rendu public : n'importe quel visiteur pouvait changer l'apparence de tout
+          le site — c'était la cause de la « densité qui change les onglets ». */}
     </React.Fragment>
   );
 }
